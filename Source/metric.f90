@@ -22,6 +22,7 @@ module metric_module
 contains
 
     subroutine inverse_metric(alpha, beta, gam, g_up)
+        ! Return components of the inverse metric. Works for any 3+1 metric.
 
         real(kind=dp_t)   , intent(inout) :: alpha(0:,0:,0:)
         real(kind=dp_t)   , intent(inout) :: beta(:,0:,0:,0:)
@@ -43,6 +44,7 @@ contains
     end subroutine inverse_metric
 
     subroutine calcW(c, alpha, beta, gam, u, v, w, W)
+        ! Calculates the Lorentz factor
 
         real(kind=dp_t)   , intent(in) :: c
         real(kind=dp_t)   , intent(inout) :: alpha(0:,0:,0:)
@@ -75,6 +77,9 @@ contains
     end subroutine calcW
 
     subroutine calcu0(c, alpha, beta, gam, u, v, w, u0)
+        ! Calculates timelike coordinate of 3+1 velocity
+        ! using Lorentz factor and alpha:
+        ! W = alpha * u0
 
         real(kind=dp_t)   , intent(in) :: c
         real(kind=dp_t)   , intent(inout) :: alpha(0:,0:,0:)
@@ -95,6 +100,7 @@ contains
     end subroutine calcu0
 
     subroutine g(alpha, beta, gam, x, met)
+        ! Returns metric components at coordinate x
 
         real(kind=dp_t)   , intent(inout) :: alpha(0:,0:,0:)
         real(kind=dp_t)   , intent(inout) :: beta(:,0:,0:,0:)
@@ -127,7 +133,12 @@ contains
     end subroutine g
 
     subroutine christoffels(alpha, beta, gam, g, R, c, chrls)
-        ! these are metric dependent
+        ! Calculates christoffel symbols given metric functions.
+        ! These are metric dependent, so have only implemented cartesian
+        ! weak field here.
+        ! TODO: Need instead to provide these in initial data, or at least
+        ! have the initial data provide an analytic form of the derivatives
+        ! of alpha and beta, K and 3-metric christoffels.
 
         real(kind=dp_t)   , intent(in) :: g, R, c
 
