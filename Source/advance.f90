@@ -25,7 +25,7 @@ module advance_timestep_module
   public :: advance_timestep
 
 contains
-    
+
   subroutine advance_timestep(init_mode,mla,uold,sold,unew,snew, &
                               gpi,pi,normal,rho0_old,rhoh0_old, &
                               rho0_new,rhoh0_new,p0_old,p0_new,tempbar,gamma1bar,w0, &
@@ -49,7 +49,7 @@ contains
     use phihalf_module              , only : make_S_at_halftime, make_at_halftime
     use extraphalf_module           , only : extrap_to_halftime
     use thermal_conduct_module      , only : thermal_conduct
-    use make_explicit_thermal_module, only : make_explicit_thermal, make_thermal_coeffs 
+    use make_explicit_thermal_module, only : make_explicit_thermal, make_thermal_coeffs
     use make_grav_module            , only : make_grav_cell
     use make_eta_module             , only : make_etarho_planar, make_etarho_spherical
     use make_psi_module             , only : make_psi_planar, make_psi_spherical
@@ -80,7 +80,7 @@ contains
     use time_module                 , only : time
     use addw0_module                , only : addw0
     use make_pi_cc_module           , only : make_pi_cc
-    
+
     logical,         intent(in   ) :: init_mode
     type(ml_layout), intent(inout) :: mla
     type(multifab),  intent(in   ) ::   uold(:)
@@ -191,7 +191,7 @@ contains
 
     integer :: nreduce
     real(kind=dp_t), allocatable :: times_local(:), times_global(:)
-    
+
     type(bl_prof_timer), save :: bpt
 
     call build(bpt, "advance_timestep")
@@ -259,7 +259,7 @@ contains
 
     if (barrier_timers) call parallel_barrier()
     misc_time = misc_time + parallel_wtime() - misc_time_start
-    
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 1 -- react the full state and then base state through dt/2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -293,15 +293,17 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     advect_time_start = parallel_wtime()
-    
+
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
-       write(6,*) '<<< CALLING advance_timestep with dt =',dt 
+       write(6,*) '<<< CALLING advance_timestep with dt =',dt
        write(6,*) '<<< STEP  2 : make w0 >>> '
     end if
-    
+
     do n=1,nlevs
        call multifab_build(Source_nph(n), mla%la(n), 1, 0)
     end do
+
+    ! 2A
 
     if (time .eq. ZERO) then
        call make_S_at_halftime(mla,Source_nph,Source_old,Source_new, &
@@ -319,7 +321,7 @@ contains
     ! compute p0_minus_peosbar = p0_old - peosbar (for making w0) and
     ! compute delta_p_term = peos_old - peosbar_cart (for RHS of projections)
     if (dpdt_factor .gt. ZERO ) then
-    
+
        do n=1,nlevs
           call multifab_build(peos(n), mla%la(n), 1, 0)
        end do
@@ -336,7 +338,7 @@ contains
        do n=1,nlevs
           call multifab_build(peosbar_cart(n), mla%la(n), 1, 0)
        end do
-       
+
        ! compute peosbar_cart from peosbar
        call put_1d_array_on_cart(peosbar,peosbar_cart,foextrap_comp, &
                                  .false.,.false.,dx,the_bc_tower%bc_tower_array,mla)
@@ -346,7 +348,7 @@ contains
           call multifab_copy(delta_p_term(n), peos(n))
           call multifab_sub_sub(delta_p_term(n), peosbar_cart(n))
        end do
-       
+
        do n=1,nlevs
           call destroy(peos(n))
           call destroy(peosbar_cart(n))
@@ -359,6 +361,8 @@ contains
 
     end if
 
+    ! 2B
+
     if (dm .eq. 3) then
        do n=1,nlevs
           call multifab_build(w0_force_cart(n),mla%la(n),dm,1)
@@ -370,6 +374,8 @@ contains
 
        end do
     end if
+
+    ! 2C
 
     if (evolve_base_state) then
 
@@ -395,11 +401,11 @@ contains
        Sbar = ZERO
 
     end if
-    
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 3 -- construct the advective velocity
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '<<< STEP  3 : create MAC velocities>>> '
     end if
@@ -409,7 +415,7 @@ contains
           call multifab_build_edge(umac(n,comp), mla%la(n),1,1,comp)
        end do
     end do
-    
+
     call advance_premac(uold,sold,umac,gpi,normal,w0,w0mac,w0_force,w0_force_cart, &
                         rho0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla)
 
@@ -482,13 +488,15 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 4 -- advect the base state and full state through dt
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+
     advect_time_start = parallel_wtime()
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '<<< STEP  4 : advect base        '
     end if
-    
+
+    ! 4A
+
     if (evolve_base_state) then
        call advect_base_dens(w0,rho0_old,rho0_new,rho0_predicted_edge,dt)
        call compute_cutoff_coords(rho0_new)
@@ -500,7 +508,7 @@ contains
        call multifab_build(thermal1(n), mla%la(n), 1, 0)
        call setval(thermal1(n),ZERO,all=.true.)
     end do
-    
+
     ! thermal is the forcing for rhoh or temperature
     if(use_thermal_diffusion) then
        do n=1,nlevs
@@ -531,6 +539,8 @@ contains
        write(6,*) '            :  density_advance >>> '
        write(6,*) '            :   tracer_advance >>> '
     end if
+
+    ! 4C
 
     do n=1,nlevs
        do comp = 1,dm
@@ -565,6 +575,8 @@ contains
        endif
     end if
 
+    ! 4D
+
     ! Correct the base state by "averaging"
     if (use_etarho .and. evolve_base_state) then
        call average(mla,s2,rho0_new,dx,rho_comp)
@@ -577,11 +589,15 @@ contains
        grav_cell_new = grav_cell_old
     end if
 
+    ! 4E
+
     if (evolve_base_state) then
 
        ! set new p0 through HSE
        p0_new = p0_old
        call enforce_HSE(rho0_new,p0_new,grav_cell_new)
+
+       ! 4F
 
        ! make psi
        if (spherical .eq. 0) then
@@ -619,6 +635,8 @@ contains
 
     end if
 
+    ! 4G
+
     if (evolve_base_state) then
 
        ! compute rhoh0_old by "averaging"
@@ -632,6 +650,8 @@ contains
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '            : enthalpy_advance >>> '
     end if
+
+    ! 4H
 
     call enthalpy_advance(mla,1,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           rho0_old,rhoh0_old,rho0_new,rhoh0_new,p0_old,p0_new, &
@@ -652,7 +672,7 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 4a (Option I) -- Add thermal conduction (only enthalpy terms)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+
     thermal_time_start = parallel_wtime()
 
     if (use_thermal_diffusion) then
@@ -699,7 +719,7 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 5 -- react the full state and then base state through dt/2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+
     react_time_start = parallel_wtime()
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
@@ -709,7 +729,7 @@ contains
     do n=1,nlevs
        call multifab_build(rho_Hext(n), mla%la(n), 1, 0)
     end do
-    
+
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
                      the_bc_tower%bc_tower_array)
 
@@ -719,7 +739,7 @@ contains
 
     if (barrier_timers) call parallel_barrier()
     react_time = react_time + parallel_wtime() - react_time_start
-    
+
     misc_time_start = parallel_wtime()
 
     ! compute gamma1bar
@@ -728,7 +748,7 @@ contains
        do n=1,nlevs
           call multifab_build(gamma1(n), mla%la(n), 1, 0)
        end do
-       
+
        call make_gamma(mla,gamma1,snew,p0_new,dx)
        call average(mla,gamma1,gamma1bar,dx,1)
 
@@ -739,7 +759,7 @@ contains
        call make_div_coeff(div_coeff_new,rho0_new,p0_new,gamma1bar,grav_cell_new)
 
     else
-        
+
        ! Just copy div_coeff_new from div_coeff_old if not evolving the base state
        div_coeff_new = div_coeff_old
 
@@ -755,7 +775,7 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     advect_time_start = parallel_wtime()
-    
+
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '<<< STEP  6 : make new S and new w0 >>> '
     end if
@@ -794,6 +814,8 @@ contains
        call multifab_build(delta_gamma1_term(n), mla%la(n), 1, 0)
        call multifab_build(delta_gamma1(n), mla%la(n), 1, 0)
     end do
+
+    ! 6A
 
     ! p0 is only used for the delta_gamma1_term
     call make_S(Source_new,delta_gamma1_term,delta_gamma1, &
@@ -857,6 +879,8 @@ contains
 
     end if
 
+    ! 6B
+
     if (dm .eq. 3) then
        do n=1,nlevs
           call multifab_build(w0_force_cart(n), mla%la(n), dm, 1)
@@ -888,7 +912,7 @@ contains
     end if
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! STEP 7 -- redo the construction of the advective velocity using the 
+!! STEP 7 -- redo the construction of the advective velocity using the
 !! current w0
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -990,6 +1014,8 @@ contains
        write(6,*) '<<< STEP  8 : advect base   '
     end if
 
+    ! 8A
+
     if (evolve_base_state) then
        call advect_base_dens(w0,rho0_old,rho0_new,rho0_predicted_edge,dt)
        call compute_cutoff_coords(rho0_new)
@@ -1028,6 +1054,8 @@ contains
                          rho0_old,rho0_new,p0_new,rho0_predicted_edge,dx,dt, &
                          the_bc_tower%bc_tower_array)
 
+    ! 8C
+
     ! Now compute the new etarho
     if (evolve_base_state) then
        if (use_etarho) then
@@ -1046,6 +1074,8 @@ contains
        call destroy(etarhoflux(n))
     end do
 
+    ! 8D
+
     ! Correct the base state using "averaging"
     if (use_etarho .and. evolve_base_state) then
        call average(mla,s2,rho0_new,dx,rho_comp)
@@ -1062,12 +1092,16 @@ contains
        grav_cell_nph = grav_cell_old
     end if
 
+    ! 8E
+
     if (evolve_base_state) then
-       
+
        ! set new p0 through HSE
        p0_new = p0_old
        call enforce_HSE(rho0_new,p0_new,grav_cell_new)
        p0_nph = HALF*(p0_old+p0_new)
+
+       ! 8F
 
        ! make psi
        if (spherical .eq. 0) then
@@ -1099,6 +1133,8 @@ contains
 
     end if
 
+    ! 8G
+
     if (evolve_base_state) then
        call advect_base_enthalpy(w0,rho0_old,rhoh0_old,rhoh0_new, &
                                  rho0_predicted_edge,psi,dt)
@@ -1109,6 +1145,8 @@ contains
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '            : enthalpy_advance >>>'
     end if
+
+    ! 8H
 
     call enthalpy_advance(mla,2,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           rho0_old,rhoh0_old,rho0_new,rhoh0_new,p0_old,p0_new, &
@@ -1245,11 +1283,11 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     ndproj_time_start = parallel_wtime()
-    
+
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '<<< STEP 10 : make new S >>>'
     end if
-          
+
     if(use_thermal_diffusion) then
 
        do n=1,nlevs
@@ -1276,11 +1314,13 @@ contains
           call setval(thermal2(n),ZERO,all=.true.)
        end do
     end if
-    
+
     do n=1,nlevs
        call multifab_build(delta_gamma1_term(n), mla%la(n), 1, 0)
        call multifab_build(delta_gamma1(n), mla%la(n), 1, 0)
     end do
+
+    ! 10A
 
     ! p0 is only used for the delta_gamma1_term
     call make_S(Source_new,delta_gamma1_term,delta_gamma1, &
@@ -1303,7 +1343,7 @@ contains
        end if
 
     end if
-    
+
     ! define dSdt = (Source_new - Source_old) / dt
     do n=1,nlevs
        call multifab_copy(dSdt(n),Source_new(n))
@@ -1313,24 +1353,24 @@ contains
 
     if (barrier_timers) call parallel_barrier()
     ndproj_time = ndproj_time + parallel_wtime() - ndproj_time_start
-    
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 11 -- update the velocity
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
+
     advect_time_start = parallel_wtime()
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        write(6,*) '<<< STEP 11 : update and project new velocity >>>'
     end if
-    
+
     ! Define rho at half time using the new rho from Step 8
     do n=1,nlevs
        call multifab_build(rhohalf(n), mla%la(n), 1, 1)
     end do
 
     call make_at_halftime(rhohalf,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
-    
+
     call velocity_advance(mla,uold,unew,sold,rhohalf,umac,gpi,normal,w0,w0mac,w0_force, &
                           w0_force_cart,rho0_old,rho0_nph,grav_cell_old,grav_cell_nph, &
                           dx,dt,the_bc_tower%bc_tower_array,sponge)
@@ -1357,7 +1397,7 @@ contains
 
     if (barrier_timers) call parallel_barrier()
     advect_time = advect_time + parallel_wtime() - advect_time_start
-       
+
     ndproj_time_start = parallel_wtime()
 
     ! Project the new velocity field.
@@ -1420,14 +1460,14 @@ contains
              call destroy(peos(n))
              call destroy(peosbar_cart(n))
           end do
-          
+
           call correct_hgrhs(the_bc_tower,mla,rho0_new,hgrhs,div_coeff_nph,dx,dt, &
                              gamma1bar,p0_new,delta_p_term)
-          
+
           do n=1,nlevs
              call destroy(delta_p_term(n))
           enddo
-          
+
        end if
 
     end if
@@ -1439,7 +1479,7 @@ contains
     do n=1,nlevs
        call multifab_build(div_coeff_3d(n), mla%la(n), 1, 1)
     end do
-       
+
     call put_1d_array_on_cart(div_coeff_nph,div_coeff_3d,foextrap_comp,.false., &
                               .false.,dx,the_bc_tower%bc_tower_array,mla)
 
@@ -1461,7 +1501,7 @@ contains
        call destroy(div_coeff_3d(n))
        call destroy(rhohalf(n))
     end do
-    
+
     ! If doing pressure iterations then put hgrhs_old into hgrhs to be returned to varden.
     if (init_mode) then
        do n=1,nlevs
@@ -1477,7 +1517,7 @@ contains
     misc_time_start = parallel_wtime()
 
     if (.not. init_mode) then
-       
+
        grav_cell_old = grav_cell_new
 
        if (.not. fix_base_state) then
@@ -1522,10 +1562,10 @@ contains
     times_local(4) = react_time
     times_local(5) = misc_time
     if (use_thermal_diffusion) times_local(6) = thermal_time
-    
+
     call parallel_reduce(times_global, times_local, MPI_MAX, &
                          proc=parallel_IOProcessorNode())
- 
+
     if (parallel_IOProcessor()) then
        print *, 'Timing summary:'
        print *, '   Advection       : ', times_global(1), ' seconds'

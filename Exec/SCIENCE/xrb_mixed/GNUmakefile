@@ -1,6 +1,6 @@
 NDEBUG := t
-MPI    := t
-OMP    :=
+MPI    := 
+OMP    := t
 
 # If using SDC, make sure you have an SDC-enabled network
 SDC :=
