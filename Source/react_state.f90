@@ -15,7 +15,7 @@ module react_state_module
 contains
 
   function slope(q, qm, qp) result (dq)
-    
+
     real (kind=dp_t), intent(in) :: q, qm, qp
     real (kind=dp_t) :: dq
 
@@ -49,22 +49,22 @@ contains
   end function ppm_fit
 
   function ppm_eval(xi, ql, qr, q6) result (qval)
-    
+
     real (kind=dp_t), intent(in) :: xi, ql, qr, q6
     real (kind=dp_t) :: qval
 
     qval = ql + xi*(qr - ql + q6*(1.0_dp_t - xi))
 
   end function ppm_eval
-    
 
-  subroutine react_state(mla,tempbar_init,sold,snew,rho_omegadot,rho_Hnuc,rho_Hext,p0, &
-                         dt,dx,the_bc_level)
+
+  subroutine react_state(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc,&
+                         rho_Hext,p0,dt,dx,the_bc_level)
 
     use probin_module, only: use_tfromp, do_heating, do_burning
     use variables, only: temp_comp, rhoh_comp, rho_comp,nscal
     use ml_cc_restriction_module , only : ml_cc_restriction
-    use heating_module        , only : get_rho_Hext 
+    use heating_module        , only : get_rho_Hext
     use rhoh_vs_t_module      , only : makeTfromRhoP, makeTfromRhoH
     use bl_constants_module   , only: ZERO
     use ml_restrict_fill_module
@@ -72,7 +72,7 @@ contains
     type(ml_layout), intent(in   ) :: mla
     type(multifab) , intent(in   ) :: sold(:)
     type(multifab) , intent(inout) :: snew(:)
-    type(multifab) , intent(inout) :: rho_omegadot(:)
+    type(multifab) , intent(inout) :: D_omegadot(:)
     type(multifab) , intent(inout) :: rho_Hnuc(:)
     type(multifab) , intent(inout) :: rho_Hext(:)
     real(dp_t)     , intent(in   ) :: p0(:,0:)
@@ -99,7 +99,7 @@ contains
        if (.not. do_burning) then
           do n = 1, nlevs
              call multifab_copy(snew(n),sold(n), nghost(sold(n)))
-             
+
              ! add in the heating term*dt
              call multifab_mult_mult_s(rho_Hext(n),dt)
              call multifab_plus_plus_c(snew(n),rhoh_comp,rho_Hext(n),1,1)
@@ -116,9 +116,9 @@ contains
 
     ! apply burning term
     if (do_burning) then
-       ! we pass in rho_Hext so that we can add it to rhoh incase we 
+       ! we pass in rho_Hext so that we can add it to rhoh incase we
        ! applied heating
-       call burner_loop(mla,tempbar_init,sold,snew,rho_omegadot,rho_Hnuc, &
+       call burner_loop(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc, &
                         rho_Hext,dx,dt,the_bc_level)
 
        ! pass temperature through for seeding the temperature update eos call
@@ -127,9 +127,9 @@ contains
                                nghost(sold(n)))
        end do
 
-    else ! not burning, so we ZERO rho_omegadot and rho_Hnuc
+    else ! not burning, so we ZERO D_omegadot and rho_Hnuc
        do n = 1, nlevs
-          call setval(rho_omegadot(n),ZERO,all=.true.)
+          call setval(D_omegadot(n),ZERO,all=.true.)
           call setval(rho_Hnuc(n),ZERO,all=.true.)
        enddo
 
@@ -152,7 +152,7 @@ contains
     ! the loop over nlevs must count backwards to make sure the finer grids are done first
     do n=nlevs,2,-1
        ! set level n-1 data to be the average of the level n data covering it
-       call ml_cc_restriction(rho_omegadot(n-1),rho_omegadot(n),mla%mba%rr(n-1,:))
+       call ml_cc_restriction(D_omegadot(n-1),D_omegadot(n),mla%mba%rr(n-1,:))
        call ml_cc_restriction(rho_Hext(n-1)    ,rho_Hext(n)    ,mla%mba%rr(n-1,:))
        call ml_cc_restriction(rho_Hnuc(n-1)    ,rho_Hnuc(n)    ,mla%mba%rr(n-1,:))
     enddo
@@ -170,7 +170,8 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine burner_loop(mla,tempbar_init,sold,snew,rho_omegadot,rho_Hnuc,rho_Hext,dx,dt,the_bc_level)
+  subroutine burner_loop(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc,&
+                         rho_Hext,dx,dt,the_bc_level,chrls,u)
 
     use bl_constants_module, only: ZERO
     use variables, only: foextrap_comp
@@ -182,12 +183,14 @@ contains
     type(ml_layout), intent(in   ) :: mla
     type(multifab) , intent(in   ) :: sold(:)
     type(multifab) , intent(inout) :: snew(:)
-    type(multifab) , intent(inout) :: rho_omegadot(:)
+    type(multifab) , intent(inout) :: D_omegadot(:)
     type(multifab) , intent(inout) :: rho_Hnuc(:)
     type(multifab) , intent(inout) :: rho_Hext(:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(:,0:)
     real(kind=dp_t), intent(in   ) :: dt,dx(:,:)
     type(bc_level) , intent(in   ) :: the_bc_level(:)
+    type(kind=dp_t) , intent(in   ) :: chrls(:)
+    type(kind=dp_t) , intent(in   ) :: u(:)
 
     ! Local
     real(kind=dp_t), pointer :: snp(:,:,:,:)
@@ -214,7 +217,7 @@ contains
 
     ng_si = nghost(sold(1))
     ng_so = nghost(snew(1))
-    ng_rw = nghost(rho_omegadot(1))
+    ng_rw = nghost(D_omegadot(1))
     ng_hn = nghost(rho_Hnuc(1))
     ng_he = nghost(rho_Hext(1))
 
@@ -239,7 +242,7 @@ contains
        do i = 1, nfabs(sold(n))
           snp => dataptr(sold(n) , i)
           sop => dataptr(snew(n), i)
-          rp => dataptr(rho_omegadot(n), i)
+          rp => dataptr(D_omegadot(n), i)
           hnp => dataptr(rho_Hnuc(n), i)
           hep => dataptr(rho_Hext(n), i)
           lo =  lwb(get_box(sold(n), i))
@@ -250,7 +253,7 @@ contains
                                  snp(:,1,1,:),ng_si,sop(:,1,1,:),ng_so, &
                                  rp(:,1,1,:),ng_rw, &
                                  hnp(:,1,1,1),ng_hn,hep(:,1,1,1),ng_he, &
-                                 dt,lo,hi)
+                                 dt,lo,hi,chrls,u)
           case (2)
 
              if (do_subgrid_burning) then
@@ -259,14 +262,14 @@ contains
                                            snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                            rp(:,:,1,:),ng_rw, &
                                            hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                           dx(n,:),dt,lo,hi)
+                                           dx(n,:),dt,lo,hi,chrls,u)
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_2d_sub(tempbar_init(n,:), &
                                            snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                            rp(:,:,1,:),ng_rw, &
                                            hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                           dx(n,:),dt,lo,hi,mp(:,:,1,1))
+                                           dx(n,:),dt,lo,hi,chrls,u,mp(:,:,1,1))
                 end if
 
              else
@@ -276,14 +279,14 @@ contains
                                        snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                        rp(:,:,1,:),ng_rw, &
                                        hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                       dt,lo,hi)
+                                       dt,lo,hi,chrls,u)
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_2d(tempbar_init(n,:), &
                                        snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                        rp(:,:,1,:),ng_rw, &
                                        hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                       dt,lo,hi,mp(:,:,1,1))
+                                       dt,lo,hi,chrls,u,mp(:,:,1,1))
                 end if
 
              endif
@@ -297,14 +300,14 @@ contains
                                            snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                            rp(:,:,:,:),ng_rw, &
                                            hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                           dt,lo,hi)
+                                           dt,lo,hi,chrls,u)
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_3d_sph(tcp(:,:,:,1),ng_tc, &
                                            snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                            rp(:,:,:,:),ng_rw, &
                                            hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                           dt,lo,hi,mp(:,:,:,1))
+                                           dt,lo,hi,chrls,u,mp(:,:,:,1))
                 end if
              else
                 if (n .eq. nlevs) then
@@ -312,14 +315,14 @@ contains
                                        snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                        rp(:,:,:,:),ng_rw, &
                                        hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                       dt,lo,hi)
+                                       dt,lo,hi,chrls,u)
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_3d(tempbar_init(n,:), &
                                        snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                        rp(:,:,:,:),ng_rw, &
                                        hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                       dt,lo,hi,mp(:,:,:,1))
+                                       dt,lo,hi,chrls,u,mp(:,:,:,1))
                 end if
              endif
           end select
@@ -338,8 +341,9 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine burner_loop_1d(tempbar_init,sold,ng_si,snew,ng_so,rho_omegadot,ng_rw,rho_Hnuc,ng_hn, &
-                            rho_Hext,ng_he,dt,lo,hi)
+  subroutine burner_loop_1d(tempbar_init,sold,ng_si,snew,ng_so,D_omegadot,&
+                            ng_rw,rho_Hnuc,ng_hn, &
+                            rho_Hext,ng_he,dt,lo,hi,chrls,u)
 
     use bl_constants_module
     use burner_module
@@ -351,20 +355,23 @@ contains
     integer        , intent(in   ) :: lo(:),hi(:),ng_si,ng_so,ng_rw,ng_he,ng_hn
     real(kind=dp_t), intent(in   ) ::        sold (lo(1)-ng_si:,:)
     real(kind=dp_t), intent(  out) ::         snew(lo(1)-ng_so:,:)
-    real(kind=dp_t), intent(  out) :: rho_omegadot(lo(1)-ng_rw:,:)
+    real(kind=dp_t), intent(  out) :: D_omegadot(lo(1)-ng_rw:,:)
     real(kind=dp_t), intent(  out) ::     rho_Hnuc(lo(1)-ng_hn:)
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
+    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:)
+    type(multifab),  intent(in   ) ::   u(:)
 
     !     Local variables
-    integer            :: i,n
+    integer            :: i,j,k,n
     real (kind = dp_t) :: rho,T_in
     real (kind = dp_t) :: x_in(nspec)
     real (kind = dp_t) :: x_out(nspec)
     real (kind = dp_t) :: rhowdot(nspec)
     real (kind = dp_t) :: rhoH
     real (kind = dp_t) :: x_test
+    real (kind = dp_t) :: grav_term
     integer, save      :: ispec_threshold
     logical, save      :: firstCall = .true.
 
@@ -377,7 +384,7 @@ contains
     endif
 
     do i = lo(1), hi(1)
-          
+
           rho = sold(i,rho_comp)
           x_in(1:nspec) = sold(i,spec_comp:spec_comp+nspec-1) / rho
 
@@ -388,7 +395,7 @@ contains
           endif
 
           ! Fortran doesn't guarantee short-circuit evaluation of logicals so
-          ! we need to test the value of ispec_threshold before using it 
+          ! we need to test the value of ispec_threshold before using it
           ! as an index in x_in
           if (ispec_threshold > 0) then
              x_test = x_in(ispec_threshold)
@@ -422,23 +429,31 @@ contains
              call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
           endif
 
+          ! Calculate gravity stuff
+          grav_term = 0.d0
+          do j = 0, 3
+              do k = 0, 3
+                  grav_term = grav_term - chrls(k,k,j,i) * u(j,i)
+              enddo
+          enddo
+
           ! pass the density and pi through
-          snew(i,rho_comp) = sold(i,rho_comp)
+          snew(i,rho_comp) = sold(i,rho_comp) + dt*grav_term*sold(i,rho_comp)
           snew(i,pi_comp) = sold(i,pi_comp)
 
           ! update the species
           snew(i,spec_comp:spec_comp+nspec-1) = x_out(1:nspec) * rho
 
           ! store the energy generation and species creation quantities
-          rho_omegadot(i,1:nspec) = rhowdot(1:nspec)
+          D_omegadot(i,1:nspec) = rhowdot(1:nspec)
           rho_Hnuc(i) = rhoH
 
           ! update the enthalpy -- include the change due to external heating
-          snew(i,rhoh_comp) = sold(i,rhoh_comp) + dt*rho_Hnuc(i) + dt*rho_Hext(i)
+          snew(i,rhoh_comp) = sold(i,rhoh_comp) + dt*rho_Hnuc(i) + dt*rho_Hext(i) + dt*grav_term*sold(i,rhoh_comp)
 
           ! pass the tracers through
-          snew(i,trac_comp:trac_comp+ntrac-1) = sold(i,trac_comp:trac_comp+ntrac-1)   
-          
+          snew(i,trac_comp:trac_comp+ntrac-1) = sold(i,trac_comp:trac_comp+ntrac-1)
+
     enddo
 
   end subroutine burner_loop_1d
@@ -447,8 +462,9 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine burner_loop_2d(tempbar_init,sold,ng_si,snew,ng_so,rho_omegadot,ng_rw,rho_Hnuc,ng_hn, &
-                            rho_Hext,ng_he,dt,lo,hi,mask)
+  subroutine burner_loop_2d(tempbar_init,sold,ng_si,snew,ng_so,&
+                            D_omegadot,ng_rw,rho_Hnuc,ng_hn, &
+                            rho_Hext,ng_he,dt,lo,hi,chrls,u,mask)
 
     use bl_constants_module
     use burner_module
@@ -460,21 +476,24 @@ contains
     integer        , intent(in   ) :: lo(:),hi(:),ng_si,ng_so,ng_rw,ng_he,ng_hn
     real(kind=dp_t), intent(in   ) ::        sold (lo(1)-ng_si:,lo(2)-ng_si:,:)
     real(kind=dp_t), intent(  out) ::         snew(lo(1)-ng_so:,lo(2)-ng_so:,:)
-    real(kind=dp_t), intent(  out) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,:)
+    real(kind=dp_t), intent(  out) :: D_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,:)
     real(kind=dp_t), intent(  out) ::     rho_Hnuc(lo(1)-ng_hn:,lo(2)-ng_hn:)
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
+    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:)
+    type(multifab),  intent(in   ) ::   u(:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):)
 
     !     Local variables
-    integer            :: i, j, n
+    integer            :: i, j, k, l, n
     real (kind = dp_t) :: rho,T_in
     real (kind = dp_t) :: x_in(nspec)
     real (kind = dp_t) :: x_out(nspec)
     real (kind = dp_t) :: rhowdot(nspec)
     real (kind = dp_t) :: rhoH
     real (kind = dp_t) :: x_test
+    real (kind = dp_t) :: grav_term
     logical            :: cell_valid
     integer, save      :: ispec_threshold
     logical, save      :: firstCall = .true.
@@ -488,7 +507,7 @@ contains
 
     do j = lo(2), hi(2)
        do i = lo(1), hi(1)
-          
+
           ! make sure the cell isn't covered by finer cells
           cell_valid = .true.
           if ( present(mask) ) then
@@ -499,7 +518,7 @@ contains
 
              rho = sold(i,j,rho_comp)
              x_in(1:nspec) = sold(i,j,spec_comp:spec_comp+nspec-1) / rho
-          
+
              if (drive_initial_convection) then
                 T_in = tempbar_init(j)
              else
@@ -507,7 +526,7 @@ contains
              endif
 
              ! Fortran doesn't guarantee short-circuit evaluation of logicals so
-             ! we need to test the value of ispec_threshold before using it 
+             ! we need to test the value of ispec_threshold before using it
              ! as an index in x_in
              if (ispec_threshold > 0) then
                 x_test = x_in(ispec_threshold)
@@ -528,7 +547,7 @@ contains
                 rhowdot = 0.d0
                 rhoH = 0.d0
              endif
-             
+
              ! check if sum{X_k} = 1
              sumX = ZERO
              do n = 1, nspec
@@ -538,33 +557,43 @@ contains
                 call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
              endif
 
+             ! Calculate gravity stuff
+             grav_term = 0.d0
+             do k = 0, 3
+                 do l = 0, 3
+                     grav_term = grav_term - chrls(k,k,l,i,j) * u(l,i,j)
+                 enddo
+             enddo
+
+
              ! pass the density and pi through
-             snew(i,j,rho_comp) = sold(i,j,rho_comp)
+             snew(i,j,rho_comp) = sold(i,j,rho_comp) + dt*grav_term*sold(i,j,rho_comp)
              snew(i,j,pi_comp) = sold(i,j,pi_comp)
-             
+
              ! update the species
              snew(i,j,spec_comp:spec_comp+nspec-1) = x_out(1:nspec) * rho
-             
+
              ! store the energy generation and species creation quantities
-             rho_omegadot(i,j,1:nspec) = rhowdot(1:nspec)
+             D_omegadot(i,j,1:nspec) = rhowdot(1:nspec)
              rho_Hnuc(i,j) = rhoH
-             
+
              ! update the enthalpy -- include the change due to external heating
-             snew(i,j,rhoh_comp) = sold(i,j,rhoh_comp) + dt*rho_Hnuc(i,j) + dt*rho_Hext(i,j)
-             
+             snew(i,j,rhoh_comp) = sold(i,j,rhoh_comp) + dt*rho_Hnuc(i,j) + dt*rho_Hext(i,j) + dt*grav_term*sold(i,j,rhoh_comp)
+
              ! pass the tracers through
-             snew(i,j,trac_comp:trac_comp+ntrac-1) = sold(i,j,trac_comp:trac_comp+ntrac-1)   
+             snew(i,j,trac_comp:trac_comp+ntrac-1) = sold(i,j,trac_comp:trac_comp+ntrac-1)
 
           end if
-          
+
        enddo
     enddo
 
   end subroutine burner_loop_2d
 
 
-  subroutine burner_loop_2d_sub(tempbar_init,sold,ng_si,snew,ng_so,rho_omegadot,ng_rw,rho_Hnuc,ng_hn, &
-                            rho_Hext,ng_he,dx,dt,lo,hi,mask)
+  subroutine burner_loop_2d_sub(tempbar_init,sold,ng_si,snew,ng_so,&
+                            D_omegadot,ng_rw,rho_Hnuc,ng_hn, &
+                            rho_Hext,ng_he,dx,dt,lo,hi,chrls,u,mask)
 
     ! a special version of the 2d loop that subsamples in the vertical direction and averages
     ! the result -- this gets a better value for the average enuc in a cell.
@@ -579,24 +608,27 @@ contains
     integer        , intent(in   ) :: lo(:),hi(:),ng_si,ng_so,ng_rw,ng_he,ng_hn
     real(kind=dp_t), intent(in   ) ::        sold (lo(1)-ng_si:,lo(2)-ng_si:,:)
     real(kind=dp_t), intent(  out) ::         snew(lo(1)-ng_so:,lo(2)-ng_so:,:)
-    real(kind=dp_t), intent(  out) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,:)
+    real(kind=dp_t), intent(  out) :: D_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,:)
     real(kind=dp_t), intent(  out) ::     rho_Hnuc(lo(1)-ng_hn:,lo(2)-ng_hn:)
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dx(:), dt
+    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:)
+    type(multifab),  intent(in   ) ::   u(:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):)
 
     !     Local variables
     integer, parameter :: nsub = 4
     integer :: jj
 
-    integer            :: i, j, n
+    integer            :: i, j, k, l, n
     real (kind = dp_t) :: rho,T_in
     real (kind = dp_t) :: x_in(nspec)
     real (kind = dp_t) :: x_out(nspec)
     real (kind = dp_t) :: rhowdot(nspec)
     real (kind = dp_t) :: rhoH
     real (kind = dp_t) :: x_test
+    real (kind = dp_t) :: grav_term
     logical            :: cell_valid
     integer, save      :: ispec_threshold
     logical, save      :: firstCall = .true.
@@ -614,7 +646,7 @@ contains
 
     do j = lo(2), hi(2)
        do i = lo(1), hi(1)
-          
+
           ! make sure the cell isn't covered by finer cells
           cell_valid = .true.
           if ( present(mask) ) then
@@ -652,7 +684,7 @@ contains
              rhoH = ZERO
 
              do jj = 0, nsub-1
-                             
+
                 rho = sold(i,j,rho_comp) + dble(jj - nsub/2 + HALF)*slope_rho/dx(2)
 
                 x_in(1:nspec) = sold(i,j,spec_comp:spec_comp+nspec-1) / sold(i,j,rho_comp) + &
@@ -677,7 +709,7 @@ contains
                 endif
 
                 ! Fortran doesn't guarantee short-circuit evaluation of logicals so
-                ! we need to test the value of ispec_threshold before using it 
+                ! we need to test the value of ispec_threshold before using it
                 ! as an index in x_in
                 if (ispec_threshold > 0) then
                    x_test = x_in(ispec_threshold)
@@ -698,7 +730,7 @@ contains
                    rhowdot_temp = 0.d0
                    rhoH_temp = 0.d0
                 endif
-             
+
                 ! check if sum{X_k} = 1
                 sumX = ZERO
                 do n = 1, nspec
@@ -720,26 +752,34 @@ contains
              rhowdot = rhowdot/nsub
              rhoH = rhoH/nsub
 
+             ! Calculate gravity stuff
+             grav_term = 0.d0
+             do k = 0, 3
+                 do l = 0, 3
+                     grav_term = grav_term - chrls(k,k,l,i,j) * u(l,i,j)
+                 enddo
+             enddo
+
 
              ! pass the density and pi through
-             snew(i,j,rho_comp) = sold(i,j,rho_comp)
+             snew(i,j,rho_comp) = sold(i,j,rho_comp) + dt*grav_term*sold(i,j,rho_comp)
              snew(i,j,pi_comp) = sold(i,j,pi_comp)
-             
+
              ! update the species
              snew(i,j,spec_comp:spec_comp+nspec-1) = x_out(1:nspec) * sold(i,j,rho_comp)
-             
+
              ! store the energy generation and species creation quantities
-             rho_omegadot(i,j,1:nspec) = rhowdot(1:nspec)
+             D_omegadot(i,j,1:nspec) = rhowdot(1:nspec)
              rho_Hnuc(i,j) = rhoH
-             
+
              ! update the enthalpy -- include the change due to external heating
-             snew(i,j,rhoh_comp) = sold(i,j,rhoh_comp) + dt*rho_Hnuc(i,j) + dt*rho_Hext(i,j)
-             
+             snew(i,j,rhoh_comp) = sold(i,j,rhoh_comp) + dt*rho_Hnuc(i,j) + dt*rho_Hext(i,j) + dt*grav_term*sold(i,j,rhoh_comp)
+
              ! pass the tracers through
-             snew(i,j,trac_comp:trac_comp+ntrac-1) = sold(i,j,trac_comp:trac_comp+ntrac-1)   
+             snew(i,j,trac_comp:trac_comp+ntrac-1) = sold(i,j,trac_comp:trac_comp+ntrac-1)
 
           end if
-          
+
        enddo
     enddo
 
@@ -747,8 +787,9 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine burner_loop_3d(tempbar_init,sold,ng_si,snew,ng_so,rho_omegadot,ng_rw,rho_Hnuc,ng_hn, &
-                            rho_Hext,ng_he,dt,lo,hi,mask)
+  subroutine burner_loop_3d(tempbar_init,sold,ng_si,snew,ng_so,&
+                            D_omegadot,ng_rw,rho_Hnuc,ng_hn, &
+                            rho_Hext,ng_he,dt,lo,hi,chrls,u,mask)
 
     use bl_constants_module
     use burner_module
@@ -760,15 +801,17 @@ contains
     integer        , intent(in   ) :: lo(:),hi(:),ng_si,ng_so,ng_rw,ng_he,ng_hn
     real(kind=dp_t), intent(in   ) ::         sold(lo(1)-ng_si:,lo(2)-ng_si:,lo(3)-ng_si:,:)
     real(kind=dp_t), intent(  out) ::         snew(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
-    real(kind=dp_t), intent(  out) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
+    real(kind=dp_t), intent(  out) :: D_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
     real(kind=dp_t), intent(  out) ::     rho_Hnuc(lo(1)-ng_hn:,lo(2)-ng_hn:,lo(3)-ng_hn:)
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:,lo(3)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
+    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
+    type(multifab),  intent(in   ) ::   u(:,:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):,lo(3):)
 
     !     Local variables
-    integer            :: i, j, k, n
+    integer            :: i, j, k, l, m, n
     real (kind = dp_t) :: rho,T_in,ldt
 
     real (kind = dp_t) :: x_in(nspec)
@@ -776,6 +819,7 @@ contains
     real (kind = dp_t) :: rhowdot(nspec)
     real (kind = dp_t) :: rhoH
     real (kind = dp_t) :: x_test
+    real (kind = dp_t) :: grav_term
     logical            :: cell_valid
     integer, save      :: ispec_threshold
     logical, save      :: firstCall = .true.
@@ -810,16 +854,16 @@ contains
                 else
                    T_in = sold(i,j,k,temp_comp)
                 endif
-                
-                ! Fortran doesn't guarantee short-circuit evaluation of logicals 
-                ! so we need to test the value of ispec_threshold before using it 
+
+                ! Fortran doesn't guarantee short-circuit evaluation of logicals
+                ! so we need to test the value of ispec_threshold before using it
                 ! as an index in x_in
                 if (ispec_threshold > 0) then
                    x_test = x_in(ispec_threshold)
                 else
                    x_test = ZERO
                 endif
-                
+
                 ! if the threshold species is not in the network, then we burn
                 ! normally.  if it is in the network, make sure the mass
                 ! fraction is above the cutoff.
@@ -833,7 +877,7 @@ contains
                    rhowdot = 0.d0
                    rhoH = 0.d0
                 endif
-                
+
                 ! check if sum{X_k} = 1
                 sumX = ZERO
                 do n = 1, nspec
@@ -843,27 +887,35 @@ contains
                    call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
                 endif
 
+                ! Calculate gravity stuff
+                grav_term = 0.d0
+                do l = 0, 3
+                    do m = 0, 3
+                        grav_term = grav_term - chrls(l,l,m,i,j,k) * u(m,i,j,k)
+                    enddo
+                enddo
+
                 ! pass the density and pi through
-                snew(i,j,k,rho_comp) = sold(i,j,k,rho_comp)
+                snew(i,j,k,rho_comp) = sold(i,j,k,rho_comp) + ldt*grav_term*sold(i,j,k,rho_comp)
                 snew(i,j,k,pi_comp) = sold(i,j,k,pi_comp)
-                
+
                 ! update the species
                 snew(i,j,k,spec_comp:spec_comp+nspec-1) = x_out(1:nspec) * rho
-                
+
                 ! store the energy generation and species create quantities
-                rho_omegadot(i,j,k,1:nspec) = rhowdot(1:nspec)
+                D_omegadot(i,j,k,1:nspec) = rhowdot(1:nspec)
                 rho_Hnuc(i,j,k) = rhoH
-                
+
                 ! update the enthalpy -- include the change due to external heating
                 snew(i,j,k,rhoh_comp) = sold(i,j,k,rhoh_comp) &
-                     + ldt*rho_Hnuc(i,j,k) + ldt*rho_Hext(i,j,k)
-                
+                     + ldt*rho_Hnuc(i,j,k) + ldt*rho_Hext(i,j,k) + ldt*grav_term*sold(i,j,k,rhoh_comp)
+
                 ! pass the tracers through
                 snew(i,j,k,trac_comp:trac_comp+ntrac-1) = &
                      sold(i,j,k,trac_comp:trac_comp+ntrac-1)
 
              end if
-             
+
           enddo
        enddo
     enddo
@@ -875,9 +927,9 @@ contains
 
   subroutine burner_loop_3d_sph(tempbar_init_cart,ng_tc, &
                                 sold,ng_si,snew,ng_so, &
-                                rho_omegadot,ng_rw, &
+                                D_omegadot,ng_rw, &
                                 rho_Hnuc,ng_hn,rho_Hext,ng_he, &
-                                dt,lo,hi,mask)
+                                dt,lo,hi,chrls,u,mask)
 
     use bl_constants_module
     use burner_module
@@ -891,14 +943,16 @@ contains
     real(kind=dp_t), intent(in   ) ::         sold(lo(1)-ng_si:,lo(2)-ng_si:,lo(3)-ng_si:,:)
     real(kind=dp_t), intent(in   ) :: tempbar_init_cart(lo(1)-ng_tc:,lo(2)-ng_tc:,lo(3)-ng_tc:)
     real(kind=dp_t), intent(  out) ::         snew(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
-    real(kind=dp_t), intent(  out) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
+    real(kind=dp_t), intent(  out) :: D_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
     real(kind=dp_t), intent(  out) ::     rho_Hnuc(lo(1)-ng_hn:,lo(2)-ng_hn:,lo(3)-ng_hn:)
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:,lo(3)-ng_he:)
     real(kind=dp_t), intent(in   ) :: dt
+    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
+    type(multifab),  intent(in   ) ::   u(:,:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):,lo(3):)
 
     !     Local variables
-    integer            :: i, j, k, n
+    integer            :: i, j, k, l, m, n
     real (kind = dp_t) :: rho,T_in,ldt
 
     real (kind = dp_t) :: x_in(nspec)
@@ -906,6 +960,7 @@ contains
     real (kind = dp_t) :: rhowdot(nspec)
     real (kind = dp_t) :: rhoH
     real (kind = dp_t) :: x_test
+    real (kind = dp_t) :: grav_term
     logical            :: cell_valid
     integer, save      :: ispec_threshold
     logical, save      :: firstCall = .true.
@@ -942,9 +997,9 @@ contains
                 else
                    T_in = sold(i,j,k,temp_comp)
                 endif
-             
-                ! Fortran doesn't guarantee short-circuit evaluation of logicals 
-                ! so we need to test the value of ispec_threshold before using it 
+
+                ! Fortran doesn't guarantee short-circuit evaluation of logicals
+                ! so we need to test the value of ispec_threshold before using it
                 ! as an index in x_in
                 if (ispec_threshold > 0) then
                    x_test = x_in(ispec_threshold)
@@ -979,7 +1034,7 @@ contains
                       x_out(:) = x_out(:)/sumX
                    endif
                 endif
-             
+
                 ! check if sum{X_k} = 1
                 sumX = ZERO
                 do n = 1, nspec
@@ -996,27 +1051,36 @@ contains
                    call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
                 endif
 
+                ! Calculate gravity stuff
+                grav_term = 0.d0
+                do l = 0, 3
+                    do m = 0, 3
+                        grav_term = grav_term - chrls(l,l,m,i,j,k) * u(m,i,j,k)
+                    enddo
+                enddo
+
                 ! pass the density and pi through
-                snew(i,j,k,rho_comp) = sold(i,j,k,rho_comp)
+                snew(i,j,k,rho_comp) = sold(i,j,k,rho_comp) + ldt*grav_term*sold(i,j,k,rho_comp)
                 snew(i,j,k,pi_comp) = sold(i,j,k,pi_comp)
-                
+
                 ! update the species
                 snew(i,j,k,spec_comp:spec_comp+nspec-1) = x_out(1:nspec) * rho
-                
+
                 ! store the energy generation and species create quantities
-                rho_omegadot(i,j,k,1:nspec) = rhowdot(1:nspec)
+                D_omegadot(i,j,k,1:nspec) = rhowdot(1:nspec)
                 rho_Hnuc(i,j,k) = rhoH
-                
+
                 ! update the enthalpy -- include the change due to external heating
                 snew(i,j,k,rhoh_comp) = sold(i,j,k,rhoh_comp) &
-                     + ldt*rho_Hnuc(i,j,k) + ldt*rho_Hext(i,j,k)
-                
+                     + ldt*rho_Hnuc(i,j,k) + ldt*rho_Hext(i,j,k) &
+                     + ldt*grav_term*sold(i,j,k,rhoh_comp)
+
                 ! pass the tracers through
                 snew(i,j,k,trac_comp:trac_comp+ntrac-1) = &
                      sold(i,j,k,trac_comp:trac_comp+ntrac-1)
 
              end if
-             
+
           enddo
        enddo
     enddo

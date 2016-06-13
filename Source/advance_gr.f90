@@ -17,6 +17,7 @@ module advance_timestep_module_gr
                                  parallel_wtime, parallel_reduce, parallel_barrier, &
                                  MPI_MAX
   use particle_module
+  use metric_module
 
   implicit none
 
@@ -276,6 +277,7 @@ contains
        call multifab_build(rho_Hnuc1(n),     mla%la(n), 1,     0)
     end do
 
+    ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot1,rho_Hnuc1,rho_Hext,p0_old,halfdt,dx, &
                      the_bc_tower%bc_tower_array)
 
@@ -733,6 +735,7 @@ contains
        call multifab_build(rho_Hext(n), mla%la(n), 1, 0)
     end do
 
+    ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
                      the_bc_tower%bc_tower_array)
 
@@ -1246,6 +1249,7 @@ contains
        call multifab_build(rho_Hext(n), mla%la(n), 1, 0)
     end do
 
+    ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
                      the_bc_tower%bc_tower_array)
 
@@ -1584,6 +1588,6 @@ contains
 
     deallocate(times_local, times_global)
 
-  end subroutine advance_timestep
+end subroutine advance_timestep_gr
 
-end module advance_timestep_module
+end module advance_timestep_module_gr

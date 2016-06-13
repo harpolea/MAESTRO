@@ -54,6 +54,7 @@ f90sources += make_psi.f90
 f90sources += make_explicit_thermal.f90
 f90sources += make_S.f90
 f90sources += make_w0.f90
+f90sources += metric.f90
 f90sources += mg_eps.f90
 f90sources += mkflux.f90
 f90sources += mkforce.f90

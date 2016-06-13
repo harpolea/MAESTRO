@@ -44,7 +44,8 @@ subroutine varden()
   use simple_log_module, only: simple_log_init, simple_log_finalize
   use pert_form_module, only: put_in_pert_form
   use model_parser_module, only: model_parser_finalize
-  
+  use metric_module
+
   implicit none
 
   integer    :: init_step,istep
@@ -68,8 +69,8 @@ subroutine varden()
   type(multifab), allocatable :: gamma1(:)
 
   type(multifab), pointer :: tag_mf(:)
-  
-  ! these are pointers because they need to be allocated and built within 
+
+  ! these are pointers because they need to be allocated and built within
   !   another function
   type(multifab), pointer :: uold(:)
   type(multifab), pointer :: sold(:)
@@ -86,7 +87,7 @@ subroutine varden()
   type(multifab), pointer :: chkdata(:)
 
   character(len=MAX_FILENAME_LEN) :: plot_file_name, check_file_name
-  
+
   integer :: npartdata
   integer, allocatable :: index_partdata(:)
   character(len=16), allocatable :: names_partdata(:)
@@ -177,10 +178,10 @@ subroutine varden()
 
   index_partdata(1) = rho_comp
   names_partdata(1) = "density"
-  
+
   index_partdata(2) = temp_comp
   names_partdata(2) = "temperature"
-  
+
   do n = 1, nspec
      index_partdata(2+n) = spec_comp -1 + n
      names_partdata(2+n) = spec_names(n)
@@ -203,9 +204,9 @@ subroutine varden()
         call particle_container_restart(particles,check_file_name,&
                                         mla,dx,prob_lo)
      endif
-     
+
   else if (test_set /= '') then
-     
+
      if(use_particles) call build(particles)
 
      call initialize_with_fixed_grids(mla,dt,pmask,dx,uold,sold,gpi,pi,dSdt, &
@@ -242,7 +243,7 @@ subroutine varden()
   nlevs = mla%nlevel
 
   ! check to make sure dimensionality is consistent in the inputs file
-  if (dm .ne. get_dim(mla%mba)) then 
+  if (dm .ne. get_dim(mla%mba)) then
      call bl_error('dm_in not properly set in inputs file')
   end if
 
@@ -250,7 +251,7 @@ subroutine varden()
   if (spherical .eq. 1 .and. dm .ne. 3) then
      call bl_error("spherical = 1 and dm != 3")
   end if
-  
+
   ! check to make sure our grid is square -- the solvers assume this
   if (dm == 2) then
      if (abs(dx(1,1) - dx(1,2)) > SMALL) then
@@ -270,7 +271,7 @@ subroutine varden()
      print *, '         make sure this is what you want to do, otherwise check'
      print *, '         the do_heating and do_burning flag settings.'
   endif
-    
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! print processor and grid info
@@ -378,7 +379,7 @@ subroutine varden()
         inquire(file="maestro-overview.out", exist=have_overview)
         if (have_overview) then
            open(unit=99, file="maestro-overview.out", form = "formatted", &
-                action="write", status="old", position="append")        
+                action="write", status="old", position="append")
            write(99,1010) restart, parallel_nprocs(), omp_get_max_threads()
            close(unit=99)
         endif
@@ -405,7 +406,7 @@ subroutine varden()
      call make_gamma(mla,gamma1,sold,p0_old,dx)
 
      call average(mla,gamma1,gamma1bar,dx,1)
-     
+
      do n=1,nlevs
         call destroy(gamma1(n))
      end do
@@ -420,7 +421,7 @@ subroutine varden()
      !----------------------------------------------------------------------
      ! Compute the initial time step
      !----------------------------------------------------------------------
-    
+
      call firstdt(mla,the_bc_tower%bc_tower_array,uold,gpi,sold,Source_old, &
                   rho0_old,p0_old,grav_cell,gamma1bar,dx,cflfac,dt)
 
@@ -493,7 +494,7 @@ subroutine varden()
                                  rho0_old, rhoh0_old, p0_old, gamma1bar, &
                                  w0, etarho_ec, etarho_cc, &
                                  div_coeff_old, psi, tempbar, tempbar_init, prob_lo(dm))
-           
+
            call write_job_info(plot_file_name, mla%mba, the_bc_tower, write_pf_time)
         enddo
 
@@ -501,9 +502,9 @@ subroutine varden()
 
   end if
 
-  if (restart < 0) then 
+  if (restart < 0) then
      istep = 0
-  else 
+  else
      istep = restart
   end if
 
@@ -563,9 +564,9 @@ subroutine varden()
            if (parallel_IOProcessor()) then
               print*,'Time to advance timestep: ',runtime1,' seconds'
            end if
-           
+
            call print_and_reset_fab_byte_spread()
-           
+
            gamma1bar = gamma1bar_hold
 
         end do ! end do istep_init_iter = 1,init_iter
@@ -681,7 +682,7 @@ subroutine varden()
   if ( (max_step >= init_step) .and. (time < stop_time .or. stop_time < 0.d0) ) then
 
      do istep = init_step,max_step
-     
+
         if (drive_initial_convection .and. istep >= stop_initial_convection) &
              drive_initial_convection = .false.
 
@@ -719,7 +720,7 @@ subroutine varden()
                     write(6,1002) n,umax,vmax
                     write(6,1012) n,umin,vmin
                  end if
-              
+
               else if (dm .eq. 3) then
                  vmax = multifab_max_c(uold(n),2)
                  vmin = multifab_min_c(uold(n),2)
@@ -752,13 +753,13 @@ subroutine varden()
            ! identically zero, set this way in initialize.
            if (spherical .eq. 0) then
               if (evolve_base_state) then
-              
+
                  ! copy the coarsest level only, interpolate to all
                  ! the other levels and then copy the valid data from
                  ! the old arrays onto the new this must be done
                  ! before we call init_multilevel or else we lose
                  ! track of where the old valid data was
-              
+
                  ! copy the coarsest level of the real arrays into the
                  ! temp arrays
                  psi_temp(1,:)        = psi(1,:)
@@ -787,7 +788,7 @@ subroutine varden()
                        end if
                     end do
                  end do
-                 
+
                  ! piecewise linear interpolation to fill the edge-centered temp arrays
                  do n=2,max_levs
                     do r=0,nr(n)
@@ -801,7 +802,7 @@ subroutine varden()
                        end if
                     end do
                  end do
-                 
+
                  ! copy valid data into temp
                  do n=2,nlevs_radial
                     do i=1,numdisjointchunks(n)
@@ -826,7 +827,7 @@ subroutine varden()
                  etarho_ec  = etarho_ec_temp
                  w0         = w0_temp
 
-              else 
+              else
                  ! evolve_base_state == F and spherical == 0
 
                  ! Here we want to fill in the rho0 array so there is
@@ -853,7 +854,7 @@ subroutine varden()
                        end if
                     end do
                  end do
-                 
+
                  ! copy valid data into temp -- this way we haven't
                  ! overwritten any of the original information.
                  do n=2,nlevs_radial
@@ -873,7 +874,7 @@ subroutine varden()
               ! created, we need to initialize tempbar_init there, in
               ! case drive_initial_convection = T
 
-              ! copy the coarsest level of the real arrays into the 
+              ! copy the coarsest level of the real arrays into the
               ! temp arrays
               tempbar_init_temp(1,:)  = tempbar_init(1,:)
 
@@ -908,14 +909,14 @@ subroutine varden()
               tempbar_init = tempbar_init_temp
 
            end if ! end regridding of base state
-           
+
            ! we can pass as an auxillary tagging quantity either the
            ! energy generate rate (per volume) or tpert
            if (use_tpert_in_tagging) then
               do n = 1, nlevs
                  call multifab_copy_c(tag_mf(n), 1, sold(n), temp_comp, 1)
               enddo
-              
+
               call put_in_pert_form(mla,tag_mf,tempbar,dx,1, &
                                     foextrap_comp,.true., &
                                     the_bc_tower%bc_tower_array)
@@ -976,7 +977,7 @@ subroutine varden()
               if (dm .eq. 3) then
                  call multifab_build(normal(n), mla%la(n),    dm, 1)
               end if
-              
+
               call setval(      unew(n), ZERO, all=.true.)
               call setval(      snew(n), ZERO, all=.true.)
               call setval(    sponge(n), ONE,  all=.true.)
@@ -995,7 +996,7 @@ subroutine varden()
 
               if (spherical .eq. 0) then
                  ! copy the old base state density with piecewise linear
-                 ! interpolated data in the new positions -- this is 
+                 ! interpolated data in the new positions -- this is
                  ! only necessary for evolve_base_state = F and
                  ! spherical = 0.
                  rho0_old = rho0_temp
@@ -1021,9 +1022,9 @@ subroutine varden()
            endif
 
 
-           ! recompute p0 based on the new rho0 
+           ! recompute p0 based on the new rho0
            call compute_cutoff_coords(rho0_old)
-           
+
            call make_grav_cell(grav_cell,rho0_old)
 
            ! enforce HSE
@@ -1043,14 +1044,14 @@ subroutine varden()
            ! gamma1bar needs to be recomputed
            if (allocated(gamma1)) deallocate(gamma1)
            allocate(gamma1(nlevs))
-           
+
            do n=1,nlevs
               call multifab_build(gamma1(n), mla%la(n), 1, 0)
            end do
-           
+
            call make_gamma(mla,gamma1,sold,p0_old,dx)
            call average(mla,gamma1,gamma1bar,dx,1)
-           
+
            do n=1,nlevs
               call destroy(gamma1(n))
            end do
@@ -1119,7 +1120,7 @@ subroutine varden()
 
         if (stop_time >= 0.d0) then
            if (time+dt > stop_time) then
-              dt = stop_time - time 
+              dt = stop_time - time
               if (parallel_IOProcessor()) then
                  print*, "Stop time limits dt =",dt
               end if
@@ -1192,34 +1193,34 @@ subroutine varden()
            do n = 1,nlevs
               if (parallel_IOProcessor()) write(6,1100) n
 
-              smin = multifab_min_c(unew(n),1) 
+              smin = multifab_min_c(unew(n),1)
               smax = multifab_max_c(unew(n),1)
               if (parallel_IOProcessor()) write(6,1101) smin,smax
 
               if (dm .ge. 2) then
-                 smin = multifab_min_c(unew(n),2) 
+                 smin = multifab_min_c(unew(n),2)
                  smax = multifab_max_c(unew(n),2)
                  if (parallel_IOProcessor()) write(6,1102) smin,smax
               end if
 
               if (dm .eq. 3) then
-                 smin = multifab_min_c(unew(n),3) 
+                 smin = multifab_min_c(unew(n),3)
                  smax = multifab_max_c(unew(n),3)
                  if (parallel_IOProcessor()) write(6,1103) smin,smax
               end if
 
-              smin = multifab_min_c(gpi(n),1) 
+              smin = multifab_min_c(gpi(n),1)
               smax = multifab_max_c(gpi(n),1)
               if (parallel_IOProcessor()) write(6,1104) smin,smax
 
               if (dm .ge. 2) then
-                 smin = multifab_min_c(gpi(n),2) 
+                 smin = multifab_min_c(gpi(n),2)
                  smax = multifab_max_c(gpi(n),2)
                  if (parallel_IOProcessor()) write(6,1105) smin,smax
               end if
 
               if (dm .eq. 3) then
-                 smin = multifab_min_c(gpi(n),3) 
+                 smin = multifab_min_c(gpi(n),3)
                  smax = multifab_max_c(gpi(n),3)
                  if (parallel_IOProcessor()) write(6,1106) smin,smax
               end if
@@ -1344,12 +1345,12 @@ subroutine varden()
                                     the_bc_tower,w0,rho0_new,rhoh0_new,p0_new, &
                                     tempbar,gamma1bar,etarho_cc, &
                                     normal,dt,particles,write_pf_time)
-                 
+
                  call write_base_state(istep, plot_file_name, &
                                        rho0_new, rhoh0_new, p0_new, gamma1bar(:,:), &
                                        w0, etarho_ec, etarho_cc, &
                                        div_coeff_old, psi, tempbar, tempbar_init, prob_lo(dm))
-                 
+
                  call write_job_info(plot_file_name, mla%mba, the_bc_tower, write_pf_time)
                  last_plt_written = istep
               end if
@@ -1362,7 +1363,7 @@ subroutine varden()
         inquire(file=".abort_maestro", exist=abort_maestro)
         if (abort_maestro) exit
 
-        
+
         ! have we reached the stop time?
         if (stop_time >= 0.d0) then
            if (time >= stop_time) goto 999
@@ -1435,7 +1436,7 @@ subroutine varden()
                               the_bc_tower,w0,rho0_new,rhoh0_new,p0_new, &
                               tempbar,gamma1bar,etarho_cc, &
                               normal,dt,particles,write_pf_time)
-        
+
            call write_base_state(istep, plot_file_name, &
                                  rho0_new, rhoh0_new, p0_new, gamma1bar, &
                                  w0, etarho_ec, etarho_cc, &
@@ -1490,7 +1491,7 @@ subroutine varden()
   call simple_log_finalize()
 
   call diag_finalize()
-  
+
   call runtime_close()
 
   deallocate(uold,sold,pi,gpi,dSdt,Source_old,Source_new,rho_omegadot2, &

@@ -20,7 +20,7 @@ module initialize_module
             initialize_with_adaptive_grids
 
 contains
-    
+
   subroutine initialize_from_restart(mla,restart,dt,pmask,dx,uold,sold,gpi,pi, &
                                      dSdt,Source_old,Source_new, &
                                      rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,the_bc_tower, &
@@ -97,7 +97,7 @@ contains
     real(dp_t), allocatable :: psi_temp(:,:)
     real(dp_t), allocatable :: etarho_cc_temp(:,:)
     real(dp_t), allocatable :: w0_temp(:,:)
-  
+
     character(len=5)   :: check_index
     character(len=6)   :: check_index6
     character(len=7)   :: check_index7
@@ -183,21 +183,21 @@ contains
        call destroy(chkdata(n))
        call destroy(la)
     end do
-    
+
     do n=1,nlevs
        call multifab_copy_c(pi(n),1,chk_p(n),1,1)
        la = get_layout(chk_p(n))
        call destroy(chk_p(n))
        call destroy(la)
     end do
-    
+
     do n=1,nlevs
        call multifab_copy_c(dSdt(n),1,chk_dsdt(n),1,1)
        la = get_layout(chk_dsdt(n))
        call destroy(chk_dsdt(n))
        call destroy(la)
     end do
-    
+
     do n=1,nlevs
        call multifab_copy_c(Source_old(n),1,chk_src_old(n),1,1)
        la = get_layout(chk_src_old(n))
@@ -211,7 +211,7 @@ contains
        call destroy(chk_src_new(n))
        call destroy(la)
     end do
-    
+
     ! Note: rho_omegadot2, rho_Hnuc2, rho_Hext, and thermal2 are not
     ! actually needed other than to have them available when we print
     ! a plotfile immediately after restart.  They are recomputed
@@ -271,7 +271,7 @@ contains
        end do
 
      endif
-    
+
     deallocate(chkdata, chk_p, chk_dsdt, chk_src_old, chk_src_new)
     deallocate(chk_rho_omegadot2, chk_rho_Hnuc2)
 
@@ -285,7 +285,7 @@ contains
     if (spherical .eq. 1) then
 
        dr_fine = dx(nlevs,1) / dble(drdxfac)
-       
+
        if (.not. octant) then
           lenx = HALF * (prob_hi(1) - prob_lo(1))
           leny = HALF * (prob_hi(2) - prob_lo(2))
@@ -295,7 +295,7 @@ contains
           leny = prob_hi(2) - prob_lo(2)
           lenz = prob_hi(3) - prob_lo(3)
        end if
-       
+
        max_dist = sqrt(lenx**2 + leny**2 + lenz**2)
        nr_fine = int(max_dist / dr_fine) + 1
 
@@ -308,10 +308,10 @@ contains
           nr_irreg = (3*(domhi(1)-0.5d0)**2-0.75d0)/2.d0
        endif
     else
-       
+
        nr_fine = extent(mla%mba%pd(nlevs),dm)
        dr_fine = (prob_hi(dm)-prob_lo(dm)) / dble(nr_fine)
-       
+
     end if
 
     ! create numdisjointchunks, r_start_coord, r_end_coord
@@ -344,7 +344,7 @@ contains
        tempbar_init = s0_init(:,:,temp_comp)
 
        call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
-       
+
        if (fix_base_state) then
           call compute_cutoff_coords(rho0_old)
           call make_grav_cell(grav_cell,rho0_old)
@@ -440,11 +440,11 @@ contains
     if (restart_into_finer .and. spherical .eq. 1) then
 
        nr_fine_old = nr_fine
-       
+
        allocate(psi_temp      (1,0:nr_fine_old-1))
        allocate(etarho_cc_temp(1,0:nr_fine_old-1))
        allocate(w0_temp       (1,0:nr_fine_old))
-       
+
        ! deallocate the following:
        ! bct%bc_tower_array(i)%phys_bc_level_array
        ! bct%bc_tower_array(i)%adv_bc_level_array
@@ -480,7 +480,7 @@ contains
              call build(tpert_mf(n), mla%la(n), 1, 0)
              call multifab_copy_c(tpert_mf(n),1,sold(n),temp_comp,1)
           enddo
-          
+
           call put_in_pert_form(mla,tpert_mf,tempbar,dx,1, &
                                 foextrap_comp,.true., &
                                 the_bc_tower%bc_tower_array)
@@ -545,7 +545,7 @@ contains
 
        max_dist = sqrt(lenx**2 + leny**2 + lenz**2)
        nr_fine = int(max_dist / dr_fine) + 1
-       
+
        ! compute nr_irreg
        domain = get_pd(get_layout(sold(nlevs)))
        domhi  = upb(domain)+1
@@ -626,7 +626,7 @@ contains
 
        ! put eta on base state edges
        ! note that in spherical the base state has no refinement
-       ! the 0th value of etarho = 0, since U dot . e_r must be 
+       ! the 0th value of etarho = 0, since U dot . e_r must be
        ! zero at the center (since e_r is not defined there)
        etarho_ec(1,0) = ZERO
        do r=1,nr_fine-1
@@ -656,8 +656,8 @@ contains
 
        ! force tempbar to be the average of temp
        call average(mla,sold,tempbar,dx,temp_comp)
-       
-       ! for restarting into finer, we lose the drive_initial_convection 
+
+       ! for restarting into finer, we lose the drive_initial_convection
        ! functionality, so we just set tempbar_init = tempbar
        tempbar_init = tempbar
 
@@ -676,7 +676,7 @@ contains
           call destroy(gamma1(n))
        end do
        deallocate(gamma1)
-     
+
        ! compute div_coeff_old
        call make_div_coeff(div_coeff_old,rho0_old,p0_old,gamma1bar,grav_cell)
 
@@ -698,6 +698,7 @@ contains
                                          dSdt,Source_old,Source_new, &
                                          rho_omegadot2,rho_Hnuc2,rho_Hext, &
                                          thermal2, &
+                                         alpha, beta, gam, u0, &
                                          the_bc_tower,div_coeff_old,div_coeff_new, &
                                          gamma1bar,gamma1bar_hold,s0_init,rho0_old, &
                                          rhoh0_old,rho0_new,rhoh0_new,p0_init, &
@@ -715,7 +716,7 @@ contains
     use enforce_HSE_module
     use rhoh_vs_t_module
     use time_module, only: time
-    
+
     type(ml_layout),intent(out  ) :: mla
     real(dp_t)    , intent(inout) :: dt
     logical       , intent(in   ) :: pmask(:)
@@ -723,6 +724,7 @@ contains
     type(multifab), pointer       :: uold(:),sold(:),gpi(:),pi(:),dSdt(:)
     type(multifab), pointer       :: Source_old(:),Source_new(:)
     type(multifab), pointer       :: rho_omegadot2(:),rho_Hnuc2(:),rho_Hext(:),thermal2(:)
+    type(multifab), pointer       :: alpha(:), beta(:), gam(:), u0(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
     real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
@@ -738,7 +740,7 @@ contains
     real(dp_t) :: lenx,leny,lenz,max_dist
 
     integer :: n,ng_s,dm,nlevs
-    
+
     ! set time and dt
     time = ZERO
     dt = 1.d20
@@ -748,14 +750,14 @@ contains
 
     ! create mla
     call ml_layout_build(mla,mba,pmask)
-    
+
     dm = mla%dim
 
     ! check for proper nesting
     if (.not. ml_boxarray_properly_nested(mla%mba, 3, pmask)) then
        call bl_error('fixed_grids not properly nested')
     end if
-    
+
     ! initialize nlevs
     nlevs = mla%nlevel
     nlevs_radial = merge(1, nlevs, spherical .eq. 1)
@@ -770,6 +772,7 @@ contains
     allocate(uold(nlevs),sold(nlevs),gpi(nlevs),pi(nlevs))
     allocate(dSdt(nlevs),Source_old(nlevs),Source_new(nlevs))
     allocate(rho_omegadot2(nlevs),rho_Hnuc2(nlevs),rho_Hext(nlevs),thermal2(nlevs))
+    allocate(alpha(nlevs),beta(nlevs),gam(nlevs),u0(nlevs))
 
     if (ppm_type .eq. 2 .or. bds_type .eq. 1) then
        ng_s = 4
@@ -790,6 +793,10 @@ contains
        call multifab_build(    rho_Hnuc2(n), mla%la(n),     1, 0)
        call multifab_build(     rho_Hext(n), mla%la(n),     1, 0)
        call multifab_build(     thermal2(n), mla%la(n),     1, 0)
+       call multifab_build(        alpha(n), mla%la(n),     1, 0)
+       call multifab_build(         beta(n), mla%la(n),    dm, 0)
+       call multifab_build(          gam(n), mla%la(n),    dm, 0)
+       call multifab_build(           u0(n), mla%la(n),     1, 0)
 
        call setval(         uold(n), ZERO, all=.true.)
        call setval(         sold(n), ZERO, all=.true.)
@@ -802,6 +809,10 @@ contains
        call setval(    rho_Hnuc2(n), ZERO, all=.true.)
        call setval(     rho_Hext(n), ZERO, all=.true.)
        call setval(     thermal2(n), ZERO, all=.true.)
+       call setval(        alpha(n), ZERO, all=.true.)
+       call setval(         beta(n), ZERO, all=.true.)
+       call setval(          gam(n), ZERO, all=.true.)
+       call setval(           u0(n), ZERO, all=.true.)
     end do
     ! initialize dx
     call initialize_dx(dx,mba,nlevs)
@@ -813,7 +824,7 @@ contains
     if (spherical .eq. 1) then
 
        dr_fine = dx(nlevs,1) / dble(drdxfac)
-       
+
        if (.not. octant) then
           lenx = HALF * (prob_hi(1) - prob_lo(1))
           leny = HALF * (prob_hi(2) - prob_lo(2))
@@ -823,7 +834,7 @@ contains
           leny = prob_hi(2) - prob_lo(2)
           lenz = prob_hi(3) - prob_lo(3)
        end if
-       
+
        max_dist = sqrt(lenx**2 + leny**2 + lenz**2)
        nr_fine = int(max_dist / dr_fine) + 1
 
@@ -837,10 +848,10 @@ contains
        endif
 
     else
-       
+
        nr_fine = extent(mla%mba%pd(nlevs),dm)
        dr_fine = (prob_hi(dm)-prob_lo(dm)) / dble(nr_fine)
-       
+
     end if
 
     ! create numdisjointchunks, r_start_coord, r_end_coord
@@ -848,6 +859,9 @@ contains
 
     ! now that we have nr_fine and dr_fine we can create nr, dr, r_cc_loc, r_edge_loc
     call init_radial(nlevs,mba)
+
+    ! make metric stuff
+    call make_weak_field(nr,r_edge_loc,alpha,beta,gam,mla)
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
@@ -867,6 +881,8 @@ contains
 
     call initveldata(uold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
     call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+
+    call calcu0(alpha, beta, gam, uold, u0, mla)
 
     p0_old       = p0_init
     rho0_old     = s0_init(:,:,rho_comp)
@@ -893,8 +909,9 @@ contains
        call compute_cutoff_coords(rho0_old)
 
        ! compute p0 with HSE
-       call make_grav_cell(grav_cell,rho0_old)
-       call enforce_HSE(rho0_old,p0_old,grav_cell)
+       !call make_grav_cell(grav_cell,rho0_old)
+
+       call enforce_TOV(rho0_old,p0_old,u0)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
@@ -978,8 +995,8 @@ contains
     ! set up hi & lo to carry indexing info
     lo = 0
     hi(1) = n_cellx-1
-    if (dm > 1) then   
-       hi(2) = n_celly - 1        
+    if (dm > 1) then
+       hi(2) = n_celly - 1
        if (dm > 2)  then
           hi(3) = n_cellz -1
        endif
@@ -1077,13 +1094,13 @@ contains
     nlevs_radial = 1
 
     if (max_levs > 1) then
-       ! Build and initialize the level 1 data 
+       ! Build and initialize the level 1 data
        ! so we can use it to build finer levels
        call multifab_build(sold(1), la_array(1), nscal, ng_s)
        call initscalardata_on_level(1,sold(1),s0_init(1,:,:),p0_init(1,:), &
                                     dx(1,:),the_bc_tower%bc_tower_array(1))
 
-       ! Fill level 1's ghost cells and apply boundary conditions 
+       ! Fill level 1's ghost cells and apply boundary conditions
        ! so we can use them in tagging boxes for refinement
        call ml_restrict_and_fill(1,sold,mba%rr,the_bc_tower%bc_tower_array, &
                                  icomp=rho_comp, &
@@ -1102,15 +1119,15 @@ contains
              ! We made a new fine level that needs to be filled.
              !   Note: We fill the data here instead of at the bottom of the
              !   loop so that we only spend resources building and filling
-             !   temporary data structures if we need to do another refinement. 
+             !   temporary data structures if we need to do another refinement.
 
              ! Build the level nl data only.
              call multifab_build(sold(nl),la_array(nl),nscal,ng_s)
-             
+
              ! Define bc_tower at level nl.
              call bc_tower_level_build(the_bc_tower,nl,la_array(nl))
-            
-             ! Fill the nl level valid region 
+
+             ! Fill the nl level valid region
              if (spherical .eq. 1) then
                 call initscalardata_on_level(nl,sold(nl),s0_init(1,:,:), &
                                              p0_init(1,:),dx(nl,:), &
@@ -1141,8 +1158,8 @@ contains
 
              call put_in_pert_form_one_level(nl,tpert_mf(nl),tempbar,dx(nl,:),1,.true.)
 
-             ! Do we need finer grids?  
-             !   Note: currently the answer to this question is always yes.  Maestro 
+             ! Do we need finer grids?
+             !   Note: currently the answer to this question is always yes.  Maestro
              !   doesn't currently support having fewer levels than max_levs
              if (nl .eq. 1) then
                 call make_new_grids(new_grid,la_array(nl),la_array(nl+1),sold(nl),dx(nl,1), &
@@ -1156,10 +1173,10 @@ contains
                 call destroy(tpert_mf(n))
              enddo
              deallocate(tpert_mf)
-          
+
           else
-             ! Do we need finer grids?  
-             !   Note: currently the answer to this question is always yes.  Maestro 
+             ! Do we need finer grids?
+             !   Note: currently the answer to this question is always yes.  Maestro
              !   doesn't currently support having fewer levels than max_levs
              if (nl .eq. 1) then
                 call make_new_grids(new_grid,la_array(nl),la_array(nl+1),sold(nl),dx(nl,1), &
@@ -1170,12 +1187,12 @@ contains
              end if
 
           endif
-         
-          ! If we tagged boxes for refinement, then build the new grids! 
+
+          ! If we tagged boxes for refinement, then build the new grids!
           if (new_grid) then
              ! Add the new level's boxes to mba's boxarray list
              call copy(mba%bas(nl+1),get_boxarray(la_array(nl+1)))
-            
+
              ! We must enforce proper nesting as we build the grids so that we
              ! can fillpatch() them
              !   Note: Proper nesting only needs to be enforced for nl >= 2
@@ -1184,7 +1201,7 @@ contains
              if(nl .ge. 2) then
                ! Test if grids are already properly nested
                if (.not. ml_boxarray_properly_nested(mba, ng_s, pmask, 2, nl+1)) then
-                 do n = 2,nl  
+                 do n = 2,nl
                    ! Delete old multifabs so that we can rebuild them.
                    call destroy(  sold(n))
                  enddo
@@ -1195,8 +1212,8 @@ contains
                  ! Loop over all the lower levels which we might have changed when we enforced proper nesting.
                  do n = 2,nl
                    ! This makes sure the boundary conditions are properly defined everywhere
-                   call bc_tower_level_build(the_bc_tower,n,la_array(n)) 
-   
+                   call bc_tower_level_build(the_bc_tower,n,la_array(n))
+
                    ! Rebuild and fill the lower level data.
                    ! TODO: It would be more efficient to only destroy/rebuild
                    !   the data when we know for sure enforce_proper_nesting()
@@ -1228,11 +1245,11 @@ contains
              nlevs = nl+1
              nlevs_radial = merge(1, nlevs, spherical .eq. 1)
              nl = nl + 1
-             
-          endif ! if (new_grid) 
-          
+
+          endif ! if (new_grid)
+
        enddo
-       
+
        do n = 1,nlevs-1
           call destroy(sold(n))
        end do
@@ -1244,17 +1261,17 @@ contains
        if (nlevs .ge. 3) then
           call enforce_proper_nesting(mba,la_array,max_grid_size_2,max_grid_size_3)
        end if
-       
+
     end if  ! end if (maxlev > 1)
-    
+
     do n = 1, nlevs
        call destroy(la_array(n))
     end do
 
     call ml_layout_restricted_build(mla,mba,nlevs,pmask)
-    
+
     nlevs = mla%nlevel
-    
+
     if (nlevs .ne. max_levs) then
        call bl_error('initialize_with_adaptive_grids: nlevs .ne. max_levs not supported yet')
     end if
@@ -1265,7 +1282,7 @@ contains
     end do
 
     nlevs_radial = merge(1, nlevs, spherical .eq. 1)
-    
+
     ! build states
     do n = 1,nlevs
        call multifab_build(         uold(n), mla%la(n),    dm, ng_s)
@@ -1355,15 +1372,15 @@ contains
   subroutine initialize_1d_arrays(num_levs,div_coeff_old,div_coeff_new,gamma1bar, &
                                   gamma1bar_hold,s0_init,rho0_old,rhoh0_old,rho0_new, &
                                   rhoh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc, &
-                                  psi,tempbar,tempbar_init,grav_cell)
+                                  psi,tempbar,tempbar_init,grav_cell,u0)
 
-    integer    , intent(in) :: num_levs    
+    integer    , intent(in) :: num_levs
     real(dp_t) , pointer    :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
     real(dp_t) , pointer    :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
     real(dp_t) , pointer    :: rhoh0_old(:,:),rho0_new(:,:),rhoh0_new(:,:),p0_init(:,:)
     real(dp_t) , pointer    :: p0_old(:,:),p0_new(:,:),w0(:,:),etarho_ec(:,:),etarho_cc(:,:)
     real(dp_t) , pointer    :: psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
-    
+
     if (spherical .eq. 0) then
        allocate(div_coeff_old (num_levs,0:nr_fine-1))
        allocate(div_coeff_new (num_levs,0:nr_fine-1))
@@ -1427,5 +1444,5 @@ contains
     grav_cell = ZERO
 
   end subroutine initialize_1d_arrays
-  
+
 end module initialize_module

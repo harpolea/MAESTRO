@@ -189,19 +189,18 @@ contains
 
   end subroutine enforce_HSE
 
-  subroutine enforce_TOV(Dh0, p0, u0, g, Rr, c)
+  subroutine enforce_TOV(Dh0, p0, u0)
 
     use geometry, only: dr, r_start_coord, r_end_coord, numdisjointchunks, &
          base_cutoff_density_coord, nr, nlevs_radial, nr_fine
     use restrict_base_module
     use bl_error_module
     use make_grav_module
-    use probin_module, only: do_planar_invsq_grav, do_2d_planar_octant
+    use probin_module, only: do_planar_invsq_grav, do_2d_planar_octant, g, Rr, c
 
     real(kind=dp_t), intent(inout) :: Dh0(:,0:)
     real(kind=dp_t), intent(inout) ::   p0(:,0:)
-    real(kind=dp_t), intent(inout) ::   u0(:,0:)
-    real(kind=dp_t), intent(in   ) :: g, Rr, c
+    type(multifab), intent(inout) ::   u0(:)
 
     integer         :: n,l,i,r
     real(kind=dp_t) :: temp,offset
@@ -211,8 +210,8 @@ contains
 
     offset = 0.d0
 
-    call make_dpdr_edge(dpdr_edge, Dh0, p0, u0, g, Rr, c)
-    call make_dpdr_cell(dpdr_cell, Dh0, p0, u0, g, Rr, c)
+    call make_dpdr_edge(dpdr_edge, Dh0, p0, u0)
+    call make_dpdr_cell(dpdr_cell, Dh0, p0, u0)
 
     ! create a copy of the input pressure to help us with initial
     ! conditions
