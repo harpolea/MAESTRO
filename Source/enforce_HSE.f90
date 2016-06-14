@@ -197,6 +197,7 @@ contains
     use bl_error_module
     use make_grav_module
     use probin_module, only: do_planar_invsq_grav, do_2d_planar_octant, g, Rr, c
+    use multifab_module
 
     real(kind=dp_t), intent(inout) :: Dh0(:,0:)
     real(kind=dp_t), intent(inout) ::   p0(:,0:)

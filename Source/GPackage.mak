@@ -1,5 +1,5 @@
 f90sources += addw0.f90
-f90sources += advance.f90
+f90sources += advance_gr.f90
 f90sources += advance_premac.f90
 f90sources += advect_base.f90
 f90sources += aux_data.f90
@@ -78,7 +78,7 @@ f90sources += time.f90
 f90sources += thermal_conduct.f90
 f90sources += update_scal.f90
 f90sources += update_vel.f90
-f90sources += varden.f90
+f90sources += varden_gr.f90
 f90sources += variables.f90
 f90sources += velocity_advance.f90
 f90sources += velpred.f90

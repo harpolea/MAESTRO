@@ -29,7 +29,7 @@ contains
     real(kind=dp_t), pointer:: sop(:,:,:,:)
     integer :: lo(mla%dim),hi(mla%dim),ng
     integer :: i,n,dm,nlevs
-    
+
     dm = mla%dim
     nlevs = mla%nlevel
 
@@ -114,7 +114,7 @@ contains
     use init_perturb_module
 
     integer           , intent(in   ) :: lo(:),hi(:),ng
-    real (kind = dp_t), intent(inout) :: s(lo(1)-ng:,lo(2)-ng:,:)  
+    real (kind = dp_t), intent(inout) :: s(lo(1)-ng:,lo(2)-ng:,:)
     real (kind = dp_t), intent(in   ) :: dx(:)
     real(kind=dp_t)   , intent(in   ) :: s0_init(0:,:)
     real(kind=dp_t)   , intent(in   ) :: p0_init(0:)
@@ -140,15 +140,15 @@ contains
                s0_init(j,trac_comp:trac_comp+ntrac-1)
        enddo
     enddo
-    
+
     ! add an optional perturbation
     if (perturb_model) then
        do j = lo(2), hi(2)
           y = prob_lo(2) + (dble(j)+HALF) * dx(2)
-          
+
           do i = lo(1), hi(1)
              x = prob_lo(1) + (dble(i)+HALF) * dx(1)
-          
+
              call perturb_2d(x, y, p0_init(j), s0_init(j,:), &
                              dens_pert, rhoh_pert, rhoX_pert, temp_pert, trac_pert)
 
@@ -160,16 +160,16 @@ contains
           enddo
        enddo
     endif
-    
+
   end subroutine initscalardata_2d
 
   subroutine initscalardata_3d(s,lo,hi,ng,dx,s0_init,p0_init)
 
     use probin_module, only: prob_lo, perturb_model
     use init_perturb_module
-    
+
     integer           , intent(in   ) :: lo(:),hi(:),ng
-    real (kind = dp_t), intent(inout) :: s(lo(1)-ng:,lo(2)-ng:,lo(3)-ng:,:)  
+    real (kind = dp_t), intent(inout) :: s(lo(1)-ng:,lo(2)-ng:,lo(3)-ng:,:)
     real (kind = dp_t), intent(in   ) :: dx(:)
     real(kind=dp_t)   , intent(in   ) :: s0_init(0:,:)
     real(kind=dp_t)   , intent(in   ) :: p0_init(0:)
@@ -182,7 +182,7 @@ contains
 
     ! initial the domain with the base state
     s = ZERO
-    
+
     ! initialize the scalars
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
@@ -231,9 +231,9 @@ contains
     use init_perturb_module
     use eos_module, only: eos_input_rp, eos
     use eos_type_module
-    
+
     integer           , intent(in   ) :: lo(:),hi(:),ng
-    real (kind = dp_t), intent(inout) :: s(lo(1)-ng:,lo(2)-ng:,lo(3)-ng:,:)  
+    real (kind = dp_t), intent(inout) :: s(lo(1)-ng:,lo(2)-ng:,lo(3)-ng:,:)
     real (kind = dp_t), intent(in   ) :: dx(:)
     real(kind=dp_t)   , intent(in   ) :: s0_init(0:,:)
     real(kind=dp_t)   , intent(in   ) :: p0_init(0:)
@@ -250,7 +250,7 @@ contains
 
     ! initial the domain with the base state
     s = ZERO
-    
+
     ! if we are spherical, we want to make sure that p0 is good, since that is
     ! what is needed for HSE.  Therefore, we will put p0 onto a cart array and
     ! then initialize h from rho, X, and p0.
@@ -280,7 +280,7 @@ contains
              enddo
           enddo
        enddo
-    enddo 
+    enddo
 
     ! initialize tracers
     do comp = trac_comp, trac_comp+ntrac-1

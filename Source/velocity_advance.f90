@@ -15,8 +15,8 @@ contains
 
   subroutine velocity_advance(mla,uold,unew,sold,rhohalf,umac,gpi, &
                               normal,w0,w0mac,w0_force,w0_force_cart_vec, &
-                              rho0_old,rho0_nph,grav_cell_old,grav_cell_nph,dx,dt, &
-                              the_bc_level,sponge)
+                              rho0_old,Dh0_old,rho0_nph,Dh0_nph,grav_cell_old,grav_cell_nph,dx,dt, &
+                              the_bc_level,sponge,u0,chrls,gam)
     use addw0_module
     use bl_prof_module
     use update_vel_module
@@ -24,7 +24,7 @@ contains
     use mk_vel_force_module
     use make_edge_scal_module
     use probin_module, only: verbose, bds_type, ppm_trace_forces
-    use variables, only: rho_comp
+    use variables, only: rho_comp, rhoh_comp
     use bds_module
 
     type(ml_layout), intent(inout) :: mla
@@ -40,12 +40,17 @@ contains
     real(kind=dp_t), intent(in   ) :: w0_force(:,0:)
     type(multifab) , intent(in   ) :: w0_force_cart_vec(:)
     real(kind=dp_t), intent(in   ) :: rho0_old(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0_old(:,0:)
     real(kind=dp_t), intent(in   ) :: rho0_nph(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0_nph(:,0:)
     real(kind=dp_t), intent(in   ) :: grav_cell_old(:,0:)
     real(kind=dp_t), intent(in   ) :: grav_cell_nph(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:),dt
     type(bc_level) , intent(in   ) :: the_bc_level(:)
     type(multifab) , intent(in   ) :: sponge(:)
+    type(multifab) , intent(in   ) :: u0(:)
+    real(kind=dp_t), intent(in   ) :: chrls(:,:,:,:,:,:,:)
+    type(multifab) , intent(in   ) :: gam(:)
 
     type(multifab)  :: force(mla%nlevel)
     type(multifab)  :: uedge(mla%nlevel,mla%dim)
@@ -73,26 +78,27 @@ contains
     end do
 
     !********************************************************
-    !     Create the velocity forcing term at time n using rho 
+    !     Create the velocity forcing term at time n using rho
     !********************************************************
 
     is_final_update = .false.
     call mk_vel_force(force,is_final_update, &
-                      uold,umac,w0,w0mac,gpi,sold,rho_comp,normal, &
-                      rho0_old,grav_cell_old,dx, &
-                      w0_force,w0_force_cart_vec,the_bc_level,mla,.true.)
+                      uold,umac,w0,w0mac,gpi,sold,rho_comp,rhoh_comp,normal, &
+                      rho0_old,Dh0_old,grav_cell_old,dx, &
+                      w0_force,w0_force_cart_vec,the_bc_level,mla,.true., &
+                      u0(:),chrls,gam(:))
 
 
     !********************************************************
     !     Add w0 to MAC velocities (trans velocities already have w0).
     !********************************************************
-    
+
     call addw0(umac,the_bc_level,mla,w0,w0mac,mult=ONE)
-    
+
     !********************************************************
-    !     Create the edge states of velocity using the MAC velocity plus w0 on edges. 
+    !     Create the edge states of velocity using the MAC velocity plus w0 on edges.
     !********************************************************
-    
+
     do n=1,nlevs
        do comp=1,dm
           call multifab_build_edge(uedge(n,comp),mla%la(n),dm,0,comp)
@@ -115,20 +121,21 @@ contains
     call addw0(umac,the_bc_level,mla,w0,w0mac,mult=-ONE)
 
     !********************************************************
-    !     Now create the force at half-time using rhohalf 
+    !     Now create the force at half-time using rhohalf
     !********************************************************
 
     is_final_update = .true.
     call mk_vel_force(force,is_final_update, &
-                      uold,umac,w0,w0mac,gpi,rhohalf,1,normal, &
-                      rho0_nph,grav_cell_nph,dx, &
-                      w0_force,w0_force_cart_vec,the_bc_level,mla,.true.)
+                      uold,umac,w0,w0mac,gpi,rhohalf,1,rhoh_comp,normal, &
+                      rho0_nph,Dh0_nph,grav_cell_nph,dx, &
+                      w0_force,w0_force_cart_vec,the_bc_level,mla,.true., &
+                      u0(:),chrls,gam(:))
 
 
     !********************************************************
     !     Update the velocity with convective differencing
     !********************************************************
-    
+
     call update_velocity(uold,unew,umac,uedge,force,w0,w0mac, &
                          dx,dt,sponge,mla,the_bc_level)
 
@@ -146,23 +153,23 @@ contains
           smax = multifab_max_c(unew(n),1)
           if (parallel_IOProcessor()) write(6,1001) smin,smax
           if (dm .ge. 2) then
-             smin = multifab_min_c(unew(n),2) 
+             smin = multifab_min_c(unew(n),2)
              smax = multifab_max_c(unew(n),2)
              if (parallel_IOProcessor()) write(6,1002) smin,smax
           end if
           if (dm .eq. 3) then
-             smin = multifab_min_c(unew(n),3) 
+             smin = multifab_min_c(unew(n),3)
              smax = multifab_max_c(unew(n),3)
              if (parallel_IOProcessor()) write(6,1003) smin,smax
           end if
           if (parallel_IOProcessor()) write(6,1004)
-          
+
 999       format('... Level ', i1, ' update:')
 1001      format('... new min/max : x-velocity       ',e17.10,2x,e17.10)
 1002      format('... new min/max : y-velocity       ',e17.10,2x,e17.10)
 1003      format('... new min/max : z-velocity       ',e17.10,2x,e17.10)
 1004      format(' ')
-          
+
        end do
     end if
 

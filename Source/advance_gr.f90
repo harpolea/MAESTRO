@@ -2,7 +2,7 @@
 ! proceeding through the 12 steps described in the multilevel paper
 ! (Nonaka et al. 2010).
 
-module advance_timestep_module_gr
+module advance_timestep_module
 
   use bl_types           , only: dp_t
   use bl_constants_module, only: ZERO, HALF, TWO
@@ -34,7 +34,8 @@ contains
                               div_coeff_old,div_coeff_new, &
                               grav_cell_old,dx,dt,dtold,the_bc_tower, &
                               dSdt,Source_old,Source_new,etarho_ec,etarho_cc, &
-                              psi,sponge,hgrhs,tempbar_init,particles)
+                              psi,sponge,hgrhs,tempbar_init,particles,&
+                              u0,chrls,gam)
 
     use bl_prof_module              , only : bl_prof_timer, build, destroy
     use      pre_advance_module     , only : advance_premac
@@ -119,6 +120,9 @@ contains
     type(multifab),  intent(in   ) :: sponge(:)
     type(multifab),  intent(inout) ::  hgrhs(:)
     type(particle_container), intent(inout) :: particles
+    type(multifab),  intent(inout) :: u0(:)
+    real(dp_t)    ,  intent(inout) :: chrls(:,:,:,:,:,:,:)
+    type(multifab),  intent(inout) :: gam(:)
 
     ! local
     type(multifab) ::             Dhalf(mla%nlevel)
@@ -163,6 +167,7 @@ contains
     real(kind=dp_t), allocatable ::        grav_cell_new(:,:)
     real(kind=dp_t), allocatable ::             D0_nph(:,:)
     real(kind=dp_t), allocatable ::               p0_nph(:,:)
+    real(kind=dp_t), allocatable ::               Dh0_nph(:,:)
     real(kind=dp_t), allocatable ::     p0_minus_peosbar(:,:)
     real(kind=dp_t), allocatable ::              peosbar(:,:)
     real(kind=dp_t), allocatable ::             w0_force(:,:)
@@ -213,6 +218,7 @@ contains
     allocate(       grav_cell_new(nlevs_radial,0:nr_fine-1))
     allocate(            D0_nph(nlevs_radial,0:nr_fine-1))
     allocate(              p0_nph(nlevs_radial,0:nr_fine-1))
+    allocate(              Dh0_nph(nlevs_radial,0:nr_fine-1))
     allocate(    p0_minus_peosbar(nlevs_radial,0:nr_fine-1))
     allocate(             peosbar(nlevs_radial,0:nr_fine-1))
     allocate(            w0_force(nlevs_radial,0:nr_fine-1))
@@ -279,7 +285,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot1,rho_Hnuc1,rho_Hext,p0_old,halfdt,dx, &
-                     the_bc_tower%bc_tower_array)
+                     the_bc_tower%bc_tower_array,chrls,uold)
 
     do n=1,nlevs
        call destroy(rho_omegadot1(n))
@@ -420,7 +426,7 @@ contains
     end do
 
     call advance_premac(uold,sold,umac,gpi,normal,w0,w0mac,w0_force,w0_force_cart, &
-                        D0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla)
+                        D0_old,Dh0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
 
     if (dm .eq. 3) then
        do n=1,nlevs
@@ -599,8 +605,8 @@ contains
        ! set new p0 through HSE
        p0_new = p0_old
 
-       ! FIXME: need to pass u0_new, g, R and c to this
-       call enforce_TOV(D0_new,p0_new,grav_cell_new)
+       ! FIXME: need to recalculate u0 at some point
+       call enforce_TOV(D0_new,p0_new,u0)
 
        ! 4F
 
@@ -737,7 +743,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array)
+                     the_bc_tower%bc_tower_array,chrls,uold)
 
     do n=1,nlevs
        call destroy(s2(n))
@@ -933,7 +939,7 @@ contains
     end do
 
     call advance_premac(uold,sold,umac,gpi,normal,w0,w0mac,w0_force,w0_force_cart, &
-                        D0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla)
+                        D0_old,Dh0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
 
     if (barrier_timers) call parallel_barrier()
     advect_time = advect_time + parallel_wtime() - advect_time_start
@@ -1091,10 +1097,12 @@ contains
     if (evolve_base_state) then
        call make_grav_cell(grav_cell_new,D0_new)
        D0_nph = HALF*(D0_old+D0_new)
+       Dh0_nph = HALF*(Dh0_old+Dh0_new)
        call make_grav_cell(grav_cell_nph,D0_nph)
     else
        grav_cell_new = grav_cell_old
        D0_nph = D0_old
+       Dh0_nph = HALF*(Dh0_old+Dh0_new)
        grav_cell_nph = grav_cell_old
     end if
 
@@ -1104,8 +1112,8 @@ contains
 
        ! set new p0 through HSE
        p0_new = p0_old
-       ! FIXME: need to pass u0_new, g, R and c to this
-       call enforce_TOV(D0_new,p0_new,grav_cell_new)
+       ! FIXME: recalculate u0 at some point
+       call enforce_TOV(D0_new,p0_new,u0)
        p0_nph = HALF*(p0_old+p0_new)
 
        ! 8F
@@ -1251,7 +1259,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array)
+                     the_bc_tower%bc_tower_array,chrls,u0)
 
     do n=1,nlevs
        call destroy(s2(n))
@@ -1380,8 +1388,9 @@ contains
     call make_at_halftime(Dhalf,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
 
     call velocity_advance(mla,uold,unew,sold,Dhalf,umac,gpi,normal,w0,w0mac,w0_force, &
-                          w0_force_cart,D0_old,D0_nph,grav_cell_old,grav_cell_nph, &
-                          dx,dt,the_bc_tower%bc_tower_array,sponge)
+                          w0_force_cart,D0_old,Dh0_old,D0_nph,Dh0_nph,grav_cell_old,grav_cell_nph, &
+                          dx,dt,the_bc_tower%bc_tower_array,sponge, &
+                          u0,chrls,gam)
 
     if (init_mode) then
        ! throw away w0 by setting w0 = w0_old
@@ -1590,4 +1599,4 @@ contains
 
 end subroutine advance_timestep_gr
 
-end module advance_timestep_module_gr
+end module advance_timestep_module

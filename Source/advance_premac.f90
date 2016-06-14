@@ -19,8 +19,8 @@ module pre_advance_module
 contains
 
   subroutine advance_premac(uold,sold,umac,gpi,normal,w0,w0mac, &
-                            w0_force,w0_force_cart_vec,rho0,grav_cell,dx,dt, &
-                            the_bc_level,mla)
+                            w0_force,w0_force_cart_vec,rho0,Dh0,grav_cell,dx,dt, &
+                            the_bc_level,mla,u0,chrls,gam)
 
     use bl_prof_module, only: bl_prof_timer, build, destroy
     use velpred_module, only: velpred
@@ -28,7 +28,7 @@ contains
     use mk_vel_force_module, only: mk_vel_force
     use addw0_module, only: addw0
     use bl_constants_module, only: ONE
-    use variables, only: rho_comp
+    use variables, only: rho_comp, rhoh_comp
     use fill_3d_module, only: put_1d_array_on_cart
     use probin_module, only: ppm_trace_forces
 
@@ -42,10 +42,14 @@ contains
     real(kind=dp_t), intent(in   ) :: w0_force(:,0:)
     type(multifab) , intent(in   ) :: w0_force_cart_vec(:)
     real(kind=dp_t), intent(in   ) :: rho0(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0(:,0:)
     real(kind=dp_t), intent(in   ) :: grav_cell(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:),dt
     type(bc_level) , intent(in   ) :: the_bc_level(:)
     type(ml_layout), intent(inout) :: mla
+    type(multifab) , intent(in   ) :: u0(:)
+    real(kind=dp_t), intent(in   ) :: chrls(:,:,:,:,:,:,:)
+    type(multifab) , intent(in   ) :: gam(:)
 
     ! local
     type(multifab) ::  force(mla%nlevel)
@@ -76,7 +80,7 @@ contains
     call put_1d_array_on_cart(w0,ufull,1,.true.,.true.,dx,the_bc_level,mla)
     do n=1,nlevs
        call multifab_plus_plus_c(ufull(n),1,uold(n),1,dm,nghost(uold(n)))
-    end do    
+    end do
 
     !*************************************************************
     !     Create utrans.
@@ -97,21 +101,21 @@ contains
     !*************************************************************
     is_final_update = .false.
     call mk_vel_force(force,is_final_update, &
-                      uold,utrans,w0,w0mac,gpi,sold,rho_comp,normal, &
-                      rho0(:,:),grav_cell,dx,w0_force,w0_force_cart_vec, &
-                      the_bc_level,mla,.true.)
+                      uold,utrans,w0,w0mac,gpi,sold,rho_comp,rhoh_comp,normal, &
+                      rho0(:,:),Dh0(:,:),grav_cell,dx,w0_force,w0_force_cart_vec, &
+                      the_bc_level,mla,.true.,u0(:),chrls,gam(:))
 
 
     !*************************************************************
     !     Add w0 to trans velocities.
     !*************************************************************
-    
+
     if (dm > 1) then
        call addw0(utrans,the_bc_level,mla,w0,w0mac,mult=ONE)
     end if
 
     !*************************************************************
-    !     Create the edge states to be used for the MAC velocity 
+    !     Create the edge states to be used for the MAC velocity
     !*************************************************************
 
     call velpred(uold,ufull,umac,utrans,force,w0,w0mac,dx,dt,the_bc_level,mla)

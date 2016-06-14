@@ -1,5 +1,5 @@
 ! Compute the timestep.  Here we use several different estimations and take
-! the most restrictive one.  They are (see paper III): 
+! the most restrictive one.  They are (see paper III):
 !    1. the advective constraint
 !    2. the force constraint
 !    3. a div{U} constraint
@@ -11,7 +11,7 @@
 !
 
 module estdt_module
-  
+
   use bl_types
   use bl_constants_module
   use multifab_module
@@ -26,12 +26,12 @@ module estdt_module
 
 contains
 
-  subroutine estdt(mla,the_bc_tower,u,s,gpi,divU,dSdt,w0,rho0,p0,gamma1bar, &
-                   grav,dx,cflfac,dt)
+  subroutine estdt(mla,the_bc_tower,u,s,gpi,divU,dSdt,w0,rho0,Dh0,p0,gamma1bar, &
+                   grav,dx,cflfac,dt,u0,chrls,gam)
 
     use bl_prof_module
     use geometry, only: spherical, nlevs_radial, nr_fine
-    use variables, only: rel_eps, rho_comp
+    use variables, only: rel_eps, rho_comp, rhoh_comp
     use bl_constants_module
     use mk_vel_force_module
     use fill_3d_module
@@ -46,13 +46,17 @@ contains
     type(multifab) , intent(in   ) :: dSdt(:)
     real(kind=dp_t), intent(in   ) :: w0(:,0:)
     real(kind=dp_t), intent(in   ) :: rho0(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0(:,0:)
     real(kind=dp_t), intent(in   ) :: p0(:,0:)
     real(kind=dp_t), intent(in   ) :: gamma1bar(:,0:)
     real(kind=dp_t), intent(in   ) :: grav(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     real(kind=dp_t), intent(in   ) :: cflfac
     real(kind=dp_t), intent(inout) :: dt
-    
+    type(multifab) , intent(in   ) :: u0(:)
+    real(kind=dp_t), intent(in   ) :: chrls(:,:,:,:,:,:,:)
+    type(multifab) , intent(in   ) :: gam(:)
+
     type(multifab) ::      force(mla%nlevel)
     type(multifab) ::      w0mac(mla%nlevel,mla%dim)
     type(multifab) :: umac_dummy(mla%nlevel,mla%dim)
@@ -71,14 +75,14 @@ contains
     real(kind=dp_t), pointer::   wxp(:,:,:,:)
     real(kind=dp_t), pointer::   wyp(:,:,:,:)
     real(kind=dp_t), pointer::   wzp(:,:,:,:)
-    
+
     integer :: lo(mla%dim),hi(mla%dim),i,n,comp,dm,nlevs
     integer :: ng_s,ng_u,ng_f,ng_dU,ng_dS,ng_w
     real(kind=dp_t) :: dt_adv,dt_adv_grid,dt_adv_proc,dt_start,dt_lev
     real(kind=dp_t) :: dt_divu,dt_divu_grid,dt_divu_proc
     real(kind=dp_t) :: umax,umax_grid,umax_proc,umax_lev
     real(kind=dp_t) :: dts_local(2), dts_global(2)
-    
+
     real(kind=dp_t), parameter :: rho_min = 1.d-20
 
     type(bl_prof_timer), save :: bpt
@@ -87,7 +91,7 @@ contains
 
     dm = mla%dim
     nlevs = mla%nlevel
-    
+
     allocate(w0_force_dummy(nlevs_radial,0:nr_fine-1))
     w0_force_dummy = 0.d0
 
@@ -104,7 +108,7 @@ contains
           call multifab_build_edge(umac_dummy(n,comp), mla%la(n),1,1,comp)
           call setval(umac_dummy(n,comp), ZERO, all=.true.)
        end do
- 
+
        ! create a dummy normal also for the vel routine -- this is not
        ! used if we don't add the utilde force
        call multifab_build(normal_dummy(n), mla%la(n), dm, 1)
@@ -125,12 +129,12 @@ contains
        end if
 
     end if
-    
+
     is_final_update = .false.
     call mk_vel_force(force,is_final_update, &
-                      u,umac_dummy,w0,w0mac,gpi,s,rho_comp,normal_dummy, &
-                      rho0,grav,dx,w0_force_dummy,w0_force_cart_dummy, &
-                      the_bc_tower%bc_tower_array,mla,.false.)
+                      u,umac_dummy,w0,w0mac,gpi,s,rho_comp,rhoh_comp,normal_dummy, &
+                      rho0,Dh0,grav,dx,w0_force_dummy,w0_force_cart_dummy, &
+                      the_bc_tower%bc_tower_array,mla,.false.,u0,chrls,gam)
 
     do n=1,nlevs
        call destroy(w0_force_cart_dummy(n))
@@ -147,7 +151,7 @@ contains
     ng_dS = nghost(dSdt(1))
 
     do n=1,nlevs
-       
+
        dt_adv_proc  = 1.d99
        dt_divu_proc = 1.d99
        dt_start     = 1.d99
@@ -221,7 +225,7 @@ contains
        dt_lev = min(dt_adv,dt_divu)
 
        if (dt_lev .eq. dt_start) then
-          if (dm .eq. 1) then 
+          if (dm .eq. 1) then
              dt_lev = dx(n,1)
           else
              dt_lev = min(dx(n,1),dx(n,2))
@@ -266,30 +270,30 @@ contains
     use variables, only: rho_comp
 
     integer, intent(in) :: n, lo(:), hi(:), ng_u, ng_s, ng_f, ng_dU, ng_dS
-    real (kind = dp_t), intent(in   ) ::     u(lo(1)-ng_u :)  
-    real (kind = dp_t), intent(in   ) ::     s(lo(1)-ng_s :,:)  
-    real (kind = dp_t), intent(in   ) :: force(lo(1)-ng_f :)  
+    real (kind = dp_t), intent(in   ) ::     u(lo(1)-ng_u :)
+    real (kind = dp_t), intent(in   ) ::     s(lo(1)-ng_s :,:)
+    real (kind = dp_t), intent(in   ) :: force(lo(1)-ng_f :)
     real (kind = dp_t), intent(in   ) ::  divU(lo(1)-ng_dU:)
     real (kind = dp_t), intent(in   ) ::  dSdt(lo(1)-ng_dS:)
     real (kind = dp_t), intent(in   ) :: w0(0:), p0(0:), gamma1bar(0:)
     real (kind = dp_t), intent(in   ) :: dx(:)
     real (kind = dp_t), intent(in   ) :: rho_min,cfl
     real (kind = dp_t), intent(inout) :: dt_adv,dt_divu,umax
-    
+
     real (kind = dp_t)  :: spdx, spdr
     real (kind = dp_t)  :: fx
     real (kind = dp_t)  :: eps
     real (kind = dp_t)  :: denom, gradp0
     real (kind = dp_t)  :: a, b, c
     integer             :: i
-    
+
     eps = 1.0d-8
-    
+
     ! advective constraints
     spdx = ZERO
     spdr = ZERO
     umax = ZERO
-    
+
     do i = lo(1), hi(1)
        spdx = max(spdx ,abs(u(i)))
        spdr = max(spdr ,abs(w0(i)))
@@ -301,20 +305,20 @@ contains
     if (spdr > eps) dt_adv = min(dt_adv, dx(1)/spdr)
 
     dt_adv = dt_adv * cfl
-    
+
     ! force constraints
     fx = ZERO
-    
+
     do i = lo(1), hi(1)
        fx = max(fx,abs(force(i)))
     enddo
-    
+
     if (fx > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0 *dx(1)/fx))
-    
+
     ! divU constraint
     do i = lo(1), hi(1)
-       
+
        if (i .eq. 0) then
           gradp0 = (p0(i+1) - p0(i))/dx(1)
        else if (i .eq. nr(n)-1) then
@@ -322,18 +326,18 @@ contains
        else
           gradp0 = HALF*(p0(i+1) - p0(i-1))/dx(1)
        endif
-          
+
        denom = divU(i) - u(i)*gradp0/(gamma1bar(i)*p0(i))
-          
+
        if (denom > ZERO) then
-          
+
           dt_divu = min(dt_divu, &
                0.4d0*(ONE - rho_min/s(i,rho_comp))/denom)
        endif
-          
+
     enddo
-    
-    do i = lo(1), hi(1)           
+
+    do i = lo(1), hi(1)
           !
           ! An additional dS/dt timestep constraint originally
           ! used in nova
@@ -349,11 +353,11 @@ contains
              c = rho_min - s(i,rho_comp)
              dt_divu = min(dt_divu, 0.4d0*2.0d0*c/(-b-sqrt(b**2-4.0d0*a*c)))
           endif
-          
+
     enddo
-    
+
   end subroutine estdt_1d
-  
+
   subroutine estdt_2d(n, u, ng_u, s, ng_s, force, ng_f, &
                       divU, ng_dU, dSdt, ng_dS, &
                       w0, p0, gamma1bar, lo, hi, &
@@ -363,31 +367,31 @@ contains
     use variables, only: rho_comp
 
     integer, intent(in) :: n, lo(:), hi(:), ng_u, ng_s, ng_f, ng_dU, ng_dS
-    real (kind = dp_t), intent(in   ) ::     u(lo(1)-ng_u :,lo(2)-ng_u :,:)  
-    real (kind = dp_t), intent(in   ) ::     s(lo(1)-ng_s :,lo(2)-ng_s :,:)  
-    real (kind = dp_t), intent(in   ) :: force(lo(1)-ng_f :,lo(2)-ng_f :,:)  
+    real (kind = dp_t), intent(in   ) ::     u(lo(1)-ng_u :,lo(2)-ng_u :,:)
+    real (kind = dp_t), intent(in   ) ::     s(lo(1)-ng_s :,lo(2)-ng_s :,:)
+    real (kind = dp_t), intent(in   ) :: force(lo(1)-ng_f :,lo(2)-ng_f :,:)
     real (kind = dp_t), intent(in   ) ::  divU(lo(1)-ng_dU:,lo(2)-ng_dU:)
     real (kind = dp_t), intent(in   ) ::  dSdt(lo(1)-ng_dS:,lo(2)-ng_dS:)
     real (kind = dp_t), intent(in   ) :: w0(0:), p0(0:), gamma1bar(0:)
     real (kind = dp_t), intent(in   ) :: dx(:)
     real (kind = dp_t), intent(in   ) :: rho_min,cfl
     real (kind = dp_t), intent(inout) :: dt_adv,dt_divu,umax
-    
+
     real (kind = dp_t)  :: spdx, spdy, spdr
     real (kind = dp_t)  :: fx, fy
     real (kind = dp_t)  :: eps
     real (kind = dp_t)  :: denom, gradp0
     real (kind = dp_t)  :: a, b, c
     integer             :: i,j
-    
+
     eps = 1.0d-8
-    
+
     ! advective constraints
     spdx = ZERO
     spdy = ZERO
     spdr = ZERO
     umax = ZERO
-    
+
     do j = lo(2), hi(2); do i = lo(1), hi(1)
        spdx = max(spdx ,abs(u(i,j,1)))
     enddo; enddo
@@ -395,7 +399,7 @@ contains
     do j = lo(2), hi(2); do i = lo(1), hi(1)
        spdy = max(spdy ,abs(u(i,j,2)+HALF*(w0(j)+w0(j+1))))
     enddo; enddo
-    
+
     do j = lo(2),hi(2)
        spdr = max(spdr ,abs(w0(j)))
     enddo
@@ -407,11 +411,11 @@ contains
     if (spdr > eps) dt_adv = min(dt_adv, dx(2)/spdr)
 
     dt_adv = dt_adv * cfl
-    
+
     ! force constraints
     fx = ZERO
     fy = ZERO
-    
+
     do j = lo(2), hi(2); do i = lo(1), hi(1)
        fx = max(fx,abs(force(i,j,1)))
     enddo; enddo
@@ -419,16 +423,16 @@ contains
     do j = lo(2), hi(2); do i = lo(1), hi(1)
        fy = max(fy,abs(force(i,j,2)))
     enddo; enddo
-    
+
     if (fx > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0 *dx(1)/fx))
-    
+
     if (fy > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0 *dx(2)/fy))
-    
+
     ! divU constraint
     do j = lo(2), hi(2)
-       
+
        if (j .eq. 0) then
           gradp0 = (p0(j+1) - p0(j))/dx(2)
        else if (j .eq. nr(n)-1) then
@@ -436,22 +440,22 @@ contains
        else
           gradp0 = HALF*(p0(j+1) - p0(j-1))/dx(2)
        endif
-       
+
        do i = lo(1), hi(1)
-          
+
           denom = divU(i,j) - u(i,j,2)*gradp0/(gamma1bar(j)*p0(j))
-          
+
           if (denom > ZERO) then
-             
+
              dt_divu = min(dt_divu, &
                   0.4d0*(ONE - rho_min/s(i,j,rho_comp))/denom)
           endif
-          
+
        enddo
     enddo
-    
+
     do j = lo(2), hi(2)
-       do i = lo(1), hi(1)           
+       do i = lo(1), hi(1)
           !
           ! An additional dS/dt timestep constraint originally
           ! used in nova
@@ -467,12 +471,12 @@ contains
              c = rho_min - s(i,j,rho_comp)
              dt_divu = min(dt_divu, 0.4d0*2.0d0*c/(-b-sqrt(b**2-4.0d0*a*c)))
           endif
-          
+
        enddo
     enddo
-    
+
   end subroutine estdt_2d
-  
+
   subroutine estdt_3d_cart(n, u, ng_u, s, ng_s, force, ng_f, &
                            divU, ng_dU, dSdt, ng_dS, &
                            w0, p0, gamma1bar, lo, hi, &
@@ -482,8 +486,8 @@ contains
     use variables, only: rho_comp
 
     integer, intent(in) :: n, lo(:), hi(:), ng_u, ng_s, ng_f, ng_dU, ng_dS
-    real (kind = dp_t), intent(in   ) ::     u(lo(1)-ng_u :,lo(2)-ng_u :,lo(3)-ng_u :,:)  
-    real (kind = dp_t), intent(in   ) ::     s(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :,:)  
+    real (kind = dp_t), intent(in   ) ::     u(lo(1)-ng_u :,lo(2)-ng_u :,lo(3)-ng_u :,:)
+    real (kind = dp_t), intent(in   ) ::     s(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :,:)
     real (kind = dp_t), intent(in   ) :: force(lo(1)-ng_f :,lo(2)-ng_f :,lo(3)-ng_f :,:)
     real (kind = dp_t), intent(in   ) ::  divU(lo(1)-ng_dU:,lo(2)-ng_dU:,lo(3)-ng_dU:)
     real (kind = dp_t), intent(in   ) ::  dSdt(lo(1)-ng_dS:,lo(2)-ng_dS:,lo(3)-ng_dS:)
@@ -491,18 +495,18 @@ contains
     real (kind = dp_t), intent(in   ) :: dx(:)
     real (kind = dp_t), intent(in   ) :: rho_min,cfl
     real (kind = dp_t), intent(inout) :: dt_adv, dt_divu, umax
-    
+
     real (kind = dp_t)  :: spdx, spdy, spdz, spdr
     real (kind = dp_t)  :: fx, fy, fz
     real (kind = dp_t)  :: eps,denom,gradp0
     real (kind = dp_t)  :: a, b, c
     integer             :: i,j,k
-    
+
     eps = 1.0d-8
-    
+
     spdx = ZERO
-    spdy = ZERO 
-    spdz = ZERO 
+    spdy = ZERO
+    spdz = ZERO
     spdr = ZERO
     umax = ZERO
     !
@@ -525,7 +529,7 @@ contains
        spdz = max(spdz ,abs(u(i,j,k,3)+HALF*(w0(k)+w0(k+1))))
     enddo; enddo; enddo
     !$OMP END PARALLEL DO
-    
+
     do k = lo(3),hi(3)
        spdr = max(spdr ,abs(w0(k)))
     enddo
@@ -541,9 +545,9 @@ contains
     !
     ! Limit dt based on forcing terms
     !
-    fx = ZERO 
-    fy = ZERO 
-    fz = ZERO 
+    fx = ZERO
+    fy = ZERO
+    fz = ZERO
 
     !$OMP PARALLEL DO PRIVATE(i,j,k) REDUCTION(MAX : fx)
     do k = lo(3), hi(3); do j = lo(2), hi(2); do i = lo(1), hi(1)
@@ -562,13 +566,13 @@ contains
        fz = max(fz,abs(force(i,j,k,3)))
     enddo; enddo; enddo
     !$OMP END PARALLEL DO
-    
+
     if (fx > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0*dx(1)/fx))
-    
+
     if (fy > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0*dx(2)/fy))
-    
+
     if (fz > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0*dx(3)/fz))
     !
@@ -576,7 +580,7 @@ contains
     !
     !$OMP PARALLEL DO PRIVATE(i,j,k,gradp0,denom) REDUCTION(MIN : dt_divu)
     do k = lo(3), hi(3)
-       
+
        if (k .eq. 0) then
           gradp0 = (p0(k+1) - p0(k))/dx(3)
        else if (k .eq. nr(n)-1) then
@@ -584,26 +588,26 @@ contains
        else
           gradp0 = HALF*(p0(k+1) - p0(k-1))/dx(3)
        endif
-       
+
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-             
+
              denom = divU(i,j,k) - u(i,j,k,3)*gradp0/(gamma1bar(k)*p0(k))
-             
+
              if (denom > ZERO) then
                 dt_divu = min(dt_divu, &
                      0.4d0*(ONE - rho_min/s(i,j,k,rho_comp))/denom)
              endif
-             
+
           enddo
        enddo
     enddo
     !$OMP END PARALLEL DO
-    
+
     !$OMP PARALLEL DO PRIVATE(i,j,k,a,b,c) REDUCTION(MIN : dt_divu)
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
-          do i = lo(1), hi(1)           
+          do i = lo(1), hi(1)
              !
              ! An additional dS/dt timestep constraint originally
              ! used in nova
@@ -619,13 +623,13 @@ contains
                 c = rho_min - s(i,j,k,rho_comp)
                 dt_divu = min(dt_divu,0.4d0*2.0d0*c/(-b-sqrt(b**2-4.0d0*a*c)))
              endif
-             
+
           enddo
        enddo
     enddo
-    
+
   end subroutine estdt_3d_cart
-  
+
   subroutine estdt_3d_sphr(u, ng_u, s, ng_s, force, ng_f, &
                            divU, ng_dU, dSdt, ng_dS, &
                            w0,w0macx,w0macy,w0macz,ng_w, p0, gamma1bar, &
@@ -634,11 +638,11 @@ contains
     use geometry,  only: dr, nr_fine
     use variables, only: rho_comp
     use fill_3d_module
-    
+
     integer           , intent(in   ) :: lo(:),hi(:),ng_u,ng_s,ng_f,ng_dU,ng_dS,ng_w
-    real (kind = dp_t), intent(in   ) ::      u(lo(1)-ng_u :,lo(2)-ng_u :,lo(3)-ng_u :,:)  
-    real (kind = dp_t), intent(in   ) ::      s(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :,:)  
-    real (kind = dp_t), intent(in   ) ::  force(lo(1)-ng_f :,lo(2)-ng_f :,lo(3)-ng_f :,:)  
+    real (kind = dp_t), intent(in   ) ::      u(lo(1)-ng_u :,lo(2)-ng_u :,lo(3)-ng_u :,:)
+    real (kind = dp_t), intent(in   ) ::      s(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :,:)
+    real (kind = dp_t), intent(in   ) ::  force(lo(1)-ng_f :,lo(2)-ng_f :,lo(3)-ng_f :,:)
     real (kind = dp_t), intent(in   ) ::   divU(lo(1)-ng_dU:,lo(2)-ng_dU:,lo(3)-ng_dU:)
     real (kind = dp_t), intent(in   ) ::   dSdt(lo(1)-ng_dS:,lo(2)-ng_dS:,lo(3)-ng_dS:)
     real (kind = dp_t), intent(in   ) :: w0macx(lo(1)-ng_w :,lo(2)-ng_w :,lo(3)-ng_w :)
@@ -648,7 +652,7 @@ contains
     real (kind = dp_t), intent(in   ) :: dx(:)
     real (kind = dp_t), intent(in   ) :: rho_min, cfl
     real (kind = dp_t), intent(inout) :: dt_adv, dt_divu, umax
-    
+
     real (kind = dp_t), allocatable :: gp0_cart(:,:,:,:)
 
     real (kind = dp_t) :: gp0(0:nr_fine)
@@ -658,12 +662,12 @@ contains
     integer            :: i,j,k,r
 
     allocate(gp0_cart(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),3))
-    
+
     eps = 1.0d-8
-    
+
     spdx = ZERO
-    spdy = ZERO 
-    spdz = ZERO 
+    spdy = ZERO
+    spdz = ZERO
     spdr = ZERO
     umax = ZERO
     !
@@ -686,7 +690,7 @@ contains
        spdz = max(spdz ,abs(u(i,j,k,3)+HALF*(w0macz(i,j,k)+w0macz(i,j,k+1))))
     enddo; enddo; enddo
     !$OMP END PARALLEL DO
-    
+
     do k=0,nr_fine
        spdr = max(spdr ,abs(w0(k)))
     enddo
@@ -699,11 +703,11 @@ contains
     if (spdr > eps) dt_adv = min(dt_adv, dr(1)/spdr)
 
     dt_adv = dt_adv * cfl
-    
+
     ! Limit dt based on forcing terms
-    fx = ZERO 
-    fy = ZERO 
-    fz = ZERO 
+    fx = ZERO
+    fy = ZERO
+    fz = ZERO
 
     !$OMP PARALLEL DO PRIVATE(i,j,k) REDUCTION(MAX : fx)
     do k = lo(3), hi(3); do j = lo(2), hi(2); do i = lo(1), hi(1)
@@ -722,16 +726,16 @@ contains
        fz = max(fz,abs(force(i,j,k,3)))
     enddo; enddo; enddo
     !$OMP END PARALLEL DO
-    
+
     if (fx > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0*dx(1)/fx))
-    
+
     if (fy > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0*dx(2)/fy))
-    
+
     if (fz > eps) &
        dt_adv = min(dt_adv,sqrt(2.0D0*dx(3)/fz))
-    
+
     ! divU constraint
     do r=1,nr_fine-1
        gamma1bar_p_avg = HALF * (gamma1bar(r)*p0(r) + gamma1bar(r-1)*p0(r-1))
@@ -741,18 +745,18 @@ contains
     gp0(      0) = gp0(        1)
 
     call put_1d_array_on_cart_3d_sphr(.true.,.true.,gp0,gp0_cart,lo,hi,dx,0)
-    
+
     !$OMP PARALLEL DO PRIVATE(i,j,k,a,b,c,gp_dot_u,denom) REDUCTION(MIN : dt_divu)
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-             
+
              gp_dot_u = u(i,j,k,1) * gp0_cart(i,j,k,1) + &
                         u(i,j,k,2) * gp0_cart(i,j,k,2) + &
                         u(i,j,k,3) * gp0_cart(i,j,k,3)
-             
-             denom = divU(i,j,k) - gp_dot_u 
-             
+
+             denom = divU(i,j,k) - gp_dot_u
+
              if (denom > ZERO) then
                 dt_divu = min(dt_divu,0.4d0*(ONE - rho_min/s(i,j,k,rho_comp))/denom)
              endif
@@ -771,7 +775,7 @@ contains
                 c = rho_min - s(i,j,k,rho_comp)
                 dt_divu = min(dt_divu,0.4d0*2.0d0*c/(-b-sqrt(b**2-4.0d0*a*c)))
              endif
-                          
+
           enddo
        enddo
     enddo
@@ -780,5 +784,5 @@ contains
     deallocate(gp0_cart)
 
   end subroutine estdt_3d_sphr
-  
+
 end module estdt_module

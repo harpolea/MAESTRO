@@ -20,8 +20,8 @@ module divu_iter_module
 contains
 
   subroutine divu_iter(istep_divu_iter,uold,sold,pi,gpi,thermal, &
-                       Source_old,normal,hgrhs,dSdt,div_coeff_old,rho0_old,p0_old,gamma1bar, &
-                       tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla)
+                       Source_old,normal,hgrhs,dSdt,div_coeff_old,rho0_old,Dh0_old,p0_old,gamma1bar, &
+                       tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam)
 
     use variables, only: nscal, foextrap_comp
     use network, only: nspec
@@ -54,6 +54,7 @@ contains
     type(multifab) , intent(in   ) :: dSdt(:)
     real(kind=dp_t), intent(in   ) :: div_coeff_old(:,0:)
     real(kind=dp_t), intent(in   ) :: rho0_old(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0_old(:,0:)
     real(kind=dp_t), intent(in   ) :: p0_old(:,0:)
     real(kind=dp_t), intent(in   ) :: gamma1bar(:,0:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(:,0:)
@@ -63,13 +64,16 @@ contains
     real(kind=dp_t), intent(inout) :: dt
     type(bc_tower) , intent(in   ) :: the_bc_tower
     type(ml_layout), intent(inout) :: mla
+    real(kind=dp_t) , intent(in   ) :: chrls(:,:,:,:,:,:,:)
+    type(multifab) , intent(in   ) :: u0(:)
+    type(multifab) , intent(in   ) :: gam(:)
 
     ! local
     integer        :: n,ng_s,nlevs
     real(dp_t)     :: halfdt,dt_temp,dt_hold
     real(dp_t)     :: eps_divu
 
-    type(multifab) :: s1(mla%nlevel)  
+    type(multifab) :: s1(mla%nlevel)
     type(multifab) :: delta_gamma1_term(mla%nlevel)
     type(multifab) :: delta_gamma1(mla%nlevel)
     type(multifab) :: rhohalf(mla%nlevel)
@@ -117,7 +121,7 @@ contains
 
     ! burn to define rho_omegadot and rho_Hnuc -- needed to make S
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot,rho_Hnuc,rho_Hext,p0_old, &
-                     halfdt,dx,the_bc_tower%bc_tower_array)
+                     halfdt,dx,the_bc_tower%bc_tower_array,chrls,uold)
 
     do n=1,nlevs
        call destroy(s1(n))
@@ -143,7 +147,7 @@ contains
           call destroy(pcoeff(n))
        end do
     end if
-    
+
     do n=1,nlevs
        call multifab_build(delta_gamma1_term(n), mla%la(n), 1, 0)
        call multifab_build(delta_gamma1(n),      mla%la(n), 1, 0)
@@ -169,12 +173,12 @@ contains
                     gamma1bar,gamma1bar,p0_minus_pthermbar, &
                     psi,etarho_ec,etarho_cc,dt,dt,delta_chi_w0,.true.)
     end if
-    
-    ! This needs to be a separate loop so Sbar is fully defined before 
+
+    ! This needs to be a separate loop so Sbar is fully defined before
     ! we get here.
     call make_hgrhs(the_bc_tower,mla,hgrhs,Source_old,delta_gamma1_term, &
                     Sbar,div_coeff_old,dx)
-    
+
     do n=1,nlevs
        call destroy(delta_gamma1_term(n))
     end do
@@ -217,14 +221,14 @@ contains
     do n=1,nlevs
        call multifab_build(div_coeff_3d(n), mla%la(n), 1, 1)
     end do
-       
+
     call put_1d_array_on_cart(div_coeff_old,div_coeff_3d,foextrap_comp,.false., &
                               .false.,dx,the_bc_tower%bc_tower_array,mla)
 
 
     call hgproject(divu_iters_comp,mla,uold,uold,rhohalf,pi,gpi,dx,dt_temp, &
                    the_bc_tower,div_coeff_3d,hgrhs,eps_divu)
-    
+
     do n=1,nlevs
        call destroy(div_coeff_3d(n))
        call destroy(rhohalf(n))
@@ -234,39 +238,39 @@ contains
        call setval(pi(n) ,0.0_dp_t, all=.true.)
        call setval(gpi(n),0.0_dp_t, all=.true.)
     end do
-    
+
     dt_hold = dt
     dt      = HUGE(dt)
 
     call estdt(mla,the_bc_tower,uold,sold,gpi,Source_old,dSdt, &
-               w0,rho0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt)
+               w0,rho0_old,Dh0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt,u0,chrls,gam)
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        print*,"Call to estdt at end of istep_divu_iter =",istep_divu_iter
        print*,"gives dt =",dt
     end if
-    
+
     dt = dt*init_shrink
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        print*, "Multiplying dt by init_shrink; dt =",dt
     end if
-    
+
     if(dt .gt. dt_hold) then
        if ( parallel_IOProcessor() .and. verbose .ge. 1) then
           print*, "Ignoring this new dt since it's larger than the previous dt =", &
                dt_hold
        end if
-       
+
        dt = min(dt_hold,dt)
     end if
-    
+
     if (fixed_dt .ne. -1.0d0) then
        dt = fixed_dt
        if (parallel_IOProcessor()) then
           print*, "Setting fixed dt =",dt
        end if
     end if
-    
+
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
        print*,''
     end if

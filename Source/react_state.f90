@@ -59,7 +59,7 @@ contains
 
 
   subroutine react_state(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc,&
-                         rho_Hext,p0,dt,dx,the_bc_level)
+                         rho_Hext,p0,dt,dx,the_bc_level,chrls,u)
 
     use probin_module, only: use_tfromp, do_heating, do_burning
     use variables, only: temp_comp, rhoh_comp, rho_comp,nscal
@@ -79,6 +79,8 @@ contains
     real(dp_t)     , intent(in   ) :: tempbar_init(:,0:)
     real(kind=dp_t), intent(in   ) :: dt,dx(:,:)
     type(bc_level) , intent(in   ) :: the_bc_level(:)
+    real(kind=dp_t) , intent(in   ) :: chrls(:,:,:,:,:,:,:)
+    type(multifab)  , intent(in   ) :: u(:)
 
     ! Local
     type(bl_prof_timer), save :: bpt
@@ -119,7 +121,7 @@ contains
        ! we pass in rho_Hext so that we can add it to rhoh incase we
        ! applied heating
        call burner_loop(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc, &
-                        rho_Hext,dx,dt,the_bc_level)
+                        rho_Hext,dx,dt,the_bc_level,chrls,u)
 
        ! pass temperature through for seeding the temperature update eos call
        do n=1,nlevs
@@ -189,8 +191,8 @@ contains
     real(kind=dp_t), intent(in   ) :: tempbar_init(:,0:)
     real(kind=dp_t), intent(in   ) :: dt,dx(:,:)
     type(bc_level) , intent(in   ) :: the_bc_level(:)
-    type(kind=dp_t) , intent(in   ) :: chrls(:)
-    type(kind=dp_t) , intent(in   ) :: u(:)
+    real(kind=dp_t) , intent(in   ) :: chrls(:,:,:,:,:,:,:)
+    type(multifab) , intent(in   ) :: u(:)
 
     ! Local
     real(kind=dp_t), pointer :: snp(:,:,:,:)
@@ -200,6 +202,7 @@ contains
     real(kind=dp_t), pointer ::  hep(:,:,:,:)
     real(kind=dp_t), pointer ::  tcp(:,:,:,:)
     logical        , pointer ::   mp(:,:,:,:)
+    real(kind=dp_t), pointer ::  up(:,:,:,:)
 
     type(multifab) :: tempbar_init_cart(mla%nlevel)
 
@@ -245,6 +248,7 @@ contains
           rp => dataptr(D_omegadot(n), i)
           hnp => dataptr(rho_Hnuc(n), i)
           hep => dataptr(rho_Hext(n), i)
+          up => dataptr(u(n), i)
           lo =  lwb(get_box(sold(n), i))
           hi =  upb(get_box(sold(n), i))
           select case (dm)
@@ -253,7 +257,7 @@ contains
                                  snp(:,1,1,:),ng_si,sop(:,1,1,:),ng_so, &
                                  rp(:,1,1,:),ng_rw, &
                                  hnp(:,1,1,1),ng_hn,hep(:,1,1,1),ng_he, &
-                                 dt,lo,hi,chrls,u)
+                                 dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,1,1,:))
           case (2)
 
              if (do_subgrid_burning) then
@@ -262,14 +266,14 @@ contains
                                            snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                            rp(:,:,1,:),ng_rw, &
                                            hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                           dx(n,:),dt,lo,hi,chrls,u)
+                                           dx(n,:),dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,1,:))
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_2d_sub(tempbar_init(n,:), &
                                            snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                            rp(:,:,1,:),ng_rw, &
                                            hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                           dx(n,:),dt,lo,hi,chrls,u,mp(:,:,1,1))
+                                           dx(n,:),dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,1,:),mp(:,:,1,1))
                 end if
 
              else
@@ -279,14 +283,14 @@ contains
                                        snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                        rp(:,:,1,:),ng_rw, &
                                        hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                       dt,lo,hi,chrls,u)
+                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,1,:))
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_2d(tempbar_init(n,:), &
                                        snp(:,:,1,:),ng_si,sop(:,:,1,:),ng_so, &
                                        rp(:,:,1,:),ng_rw, &
                                        hnp(:,:,1,1),ng_hn,hep(:,:,1,1),ng_he, &
-                                       dt,lo,hi,chrls,u,mp(:,:,1,1))
+                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,1,:),mp(:,:,1,1))
                 end if
 
              endif
@@ -300,14 +304,14 @@ contains
                                            snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                            rp(:,:,:,:),ng_rw, &
                                            hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                           dt,lo,hi,chrls,u)
+                                           dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:))
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_3d_sph(tcp(:,:,:,1),ng_tc, &
                                            snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                            rp(:,:,:,:),ng_rw, &
                                            hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                           dt,lo,hi,chrls,u,mp(:,:,:,1))
+                                           dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:),mp(:,:,:,1))
                 end if
              else
                 if (n .eq. nlevs) then
@@ -315,14 +319,14 @@ contains
                                        snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                        rp(:,:,:,:),ng_rw, &
                                        hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                       dt,lo,hi,chrls,u)
+                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:))
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_3d(tempbar_init(n,:), &
                                        snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                        rp(:,:,:,:),ng_rw, &
                                        hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                       dt,lo,hi,chrls,u,mp(:,:,:,1))
+                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:),mp(:,:,:,1))
                 end if
              endif
           end select
@@ -360,8 +364,8 @@ contains
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
-    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:)
-    type(multifab),  intent(in   ) ::   u(:)
+    real(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,:,:)
+    real(kind=dp_t),  intent(in   ) ::   u(:,:)
 
     !     Local variables
     integer            :: i,j,k,n
@@ -433,7 +437,7 @@ contains
           grav_term = 0.d0
           do j = 0, 3
               do k = 0, 3
-                  grav_term = grav_term - chrls(k,k,j,i) * u(j,i)
+                  grav_term = grav_term - chrls(k,k,j,i,1,1) * u(j,i)
               enddo
           enddo
 
@@ -481,8 +485,8 @@ contains
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
-    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:)
-    type(multifab),  intent(in   ) ::   u(:,:)
+    real(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,:)
+    real(kind=dp_t),  intent(in   ) ::   u(:,:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):)
 
     !     Local variables
@@ -561,7 +565,7 @@ contains
              grav_term = 0.d0
              do k = 0, 3
                  do l = 0, 3
-                     grav_term = grav_term - chrls(k,k,l,i,j) * u(l,i,j)
+                     grav_term = grav_term - chrls(k,k,l,i,j,1) * u(l,i,j)
                  enddo
              enddo
 
@@ -613,8 +617,8 @@ contains
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dx(:), dt
-    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:)
-    type(multifab),  intent(in   ) ::   u(:,:)
+    real(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,:)
+    real(kind=dp_t),  intent(in   ) ::   u(:,:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):)
 
     !     Local variables
@@ -756,7 +760,7 @@ contains
              grav_term = 0.d0
              do k = 0, 3
                  do l = 0, 3
-                     grav_term = grav_term - chrls(k,k,l,i,j) * u(l,i,j)
+                     grav_term = grav_term - chrls(k,k,l,i,j,1) * u(l,i,j)
                  enddo
              enddo
 
@@ -806,8 +810,8 @@ contains
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:,lo(3)-ng_he:)
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
-    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
-    type(multifab),  intent(in   ) ::   u(:,:,:)
+    real(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
+    real(kind=dp_t),  intent(in   ) ::   u(:,:,:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):,lo(3):)
 
     !     Local variables
@@ -947,8 +951,8 @@ contains
     real(kind=dp_t), intent(  out) ::     rho_Hnuc(lo(1)-ng_hn:,lo(2)-ng_hn:,lo(3)-ng_hn:)
     real(kind=dp_t), intent(in   ) ::     rho_Hext(lo(1)-ng_he:,lo(2)-ng_he:,lo(3)-ng_he:)
     real(kind=dp_t), intent(in   ) :: dt
-    type(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
-    type(multifab),  intent(in   ) ::   u(:,:,:)
+    real(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
+    real(kind=dp_t),  intent(in   ) ::   u(:,:,:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):,lo(3):)
 
     !     Local variables

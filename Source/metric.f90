@@ -35,9 +35,9 @@ contains
         real(kind=dp_t)   , intent(in) :: rs(:,:)
         type(ml_layout), intent(inout) :: mla
 
-        real(kind=dp_t) :: alphap(:,0:,0:,0:)
-        real(kind=dp_t) :: betap(:,:,0:,0:,0:)
-        real(kind=dp_t) :: gamp(:,:,0:,0:,0:)
+        real(kind=dp_t), pointer :: alphap(:,:,:,:)
+        real(kind=dp_t), pointer :: betap(:,:,:,:)
+        real(kind=dp_t), pointer :: gamp(:,:,:,:)
 
         integer :: n, i, j, dm, nlevs
 
@@ -53,8 +53,8 @@ contains
                 betap = 0.d0
 
                 do i = 0, nr(n)
-                    alphap(:,:,i) = sqrt(1.d0 - 2.d0 * (1.d0 - rs(n,i) / Rr) * g / c**2)
-                    gamp(:,:,:,i) = 1.d0 + 2.d0 * (1.d0 - rs(n,i) / Rr) * g / c**2
+                    alphap(:,:,i,1) = sqrt(1.d0 - 2.d0 * (1.d0 - rs(n,i) / Rr) * g / c**2)
+                    gamp(:,:,i,:) = 1.d0 + 2.d0 * (1.d0 - rs(n,i) / Rr) * g / c**2
                 enddo
 
             enddo
@@ -73,7 +73,7 @@ contains
         real(kind=dp_t)   , intent(out) :: g_up(0:,0:,0:,0:,0:)
 
         integer             :: i, j
-        real(kind=dp_t)     :: eye(:3,:3)
+        real(kind=dp_t)     :: eye(1:3,1:3)
 
         ! make identity matrix
         eye(:,:) = 0.d0
@@ -82,9 +82,11 @@ contains
         enddo
 
         g_up(0,0,:,:,:) = -1 / alpha(:,:,:)**2
-        g_up(0,1:,:,:,:) = beta(1:,:,:,:) / alpha(:,:,:)**2
-        g_up(1:,0,:,:,:) = beta(1:,:,:,:) / alpha(:,:,:)**2
+
         do i = 1, 3
+            g_up(0,i,:,:,:) = beta(i,:,:,:) / alpha(:,:,:)**2
+            g_up(i,0,:,:,:) = beta(i,:,:,:) / alpha(:,:,:)**2
+
             do j = 1, 3
                 g_up(i,j,:,:,:) = eye(i,j) * gam(i,:,:,:) - beta(i,:,:,:) * beta(j,:,:,:) / alpha(:,:,:)**2
             enddo
@@ -99,48 +101,50 @@ contains
         type(multifab)    , intent(in)    :: alpha(:)
         type(multifab)    , intent(in)    :: beta(:)
         type(multifab)    , intent(in)    :: gam(:)
-        type(multifab)    , intent(in) :: u
+        type(multifab)    , intent(in)    :: u(:)
         type(ml_layout)   , intent(inout) :: mla
 
-        real(kind=dp_t)   , intent(inout) :: W_lor(:,0:,0:,0:)
+        type(multifab)    , intent(in)    :: W_lor(:)
 
-        real(kind=dp_t), pointer:: alphap(:,:,:)
+        real(kind=dp_t), pointer:: alphap(:,:,:,:)
         real(kind=dp_t), pointer:: betap(:,:,:,:)
         real(kind=dp_t), pointer:: gamp(:,:,:,:)
         real(kind=dp_t), pointer:: up(:,:,:,:)
+        real(kind=dp_t), pointer:: Wp(:,:,:,:)
         integer     :: dm, nlevs, n, i, j, k
+        real(kind=dp_t)     :: eye(1:3,1:3)
 
-        real(kind=dp_t)     :: Vv(:3,0:,0:,0:)
-
-        W_lor(:,:,:,:) = 0.d0
+        ! make identity matrix
+        eye(:,:) = 0.d0
+        do i = 1,3
+            eye(i,i) = 1.d0
+        enddo
 
         do n = 1, nlevs
             do k = 1, nfabs(alpha(n))
-                alphap => dataptr(alpha(n))
-                betap => dataptr(beta(n))
-                gamp => dataptr(gam(n))
-                up => dataptr(u(n))
+                alphap => dataptr(alpha(n),k)
+                betap => dataptr(beta(n),k)
+                gamp => dataptr(gam(n),k)
+                up => dataptr(u(n),k)
+                Wp => dataptr(W_lor(n),k)
 
-                do i = 1, 3
-                    Vv(i,:,:,:) = (up(i,:,:,:) + betap(i,:,:,:)) / alphap(:,:,:)
-                enddo
-
+                Wp(:,:,:,:) = 0.d0
 
                 do i = 1, 3
                     do j = 1, 3
-                        W_lor(n,:,:,:) = W_lor(n,:,:,:) + gamp(i,j,:,:,:) * Vv(i,:,:,:) * Vv(j,:,:,:)
+                        Wp(:,:,:,1) = Wp(:,:,:,1) + eye(i,j) * &
+                        gamp(i,:,:,:) * (up(:,:,:,i) + betap(:,:,:,i)) * &
+                        (up(:,:,:,j) + betap(:,:,:,j)) / alphap(:,:,:,1)**2
                     enddo
                 enddo
             enddo
         enddo
 
-
-
-        W_lor(:,:,:,:) = 1 / sqrt(1 - W_lor(:,:,:,:)/c**2)
+        Wp(:,:,:,:) = 1 / sqrt(1 - Wp(:,:,:,:)/c**2)
 
     end subroutine calcW
 
-    subroutine calcu0(alpha, beta, gam, u, u0, mla)
+    subroutine calcu0(alpha, beta, gam, W_lor, u0, mla)
         ! Calculates timelike coordinate of 3+1 velocity
         ! using Lorentz factor and alpha:
         ! W = alpha * u0
@@ -148,30 +152,28 @@ contains
         type(multifab)    , intent(in)    :: alpha(:)
         type(multifab)    , intent(in)    :: beta(:)
         type(multifab)    , intent(in)    :: gam(:)
-        type(multifab)    , intent(in)    :: u(:)
-        type(multifab)   , intent(inout) :: u0(0:,0:,0:)
+        type(multifab)    , intent(in)    :: W_lor(:)
+        type(multifab)   , intent(inout) :: u0(:)
         type(ml_layout)   , intent(inout) :: mla
 
-        real(kind=dp_t)   :: W_lor(0:,0:,0:)
-        real(kind=dp_t), pointer :: alphap(:,:,:)
+        real(kind=dp_t), pointer :: alphap(:,:,:,:)
         real(kind=dp_t), pointer :: betap(:,:,:,:)
         real(kind=dp_t), pointer :: gamp(:,:,:,:)
-        real(kind=dp_t), pointer :: up(:,:,:,:)
-        real(kind=dp_t), pointer :: u0p(:,:,:)
+        real(kind=dp_t), pointer :: Wp(:,:,:,:)
+        real(kind=dp_t), pointer :: u0p(:,:,:,:)
         integer     :: nlevs, n, i
-
-        calcW(alpha, beta, gam, u, W_lor, mla)
 
         nlevs = mla%nlevel
 
         do n = 1, nlevs
             do i = 1, nfabs(alpha(n))
-                alphap => dataptr(alpha(n))
-                betap => dataptr(beta(n))
-                gamp => dataptr(gam(n))
-                u0p => dataptr(u0(n))
+                alphap => dataptr(alpha(n),i)
+                betap => dataptr(beta(n),i)
+                gamp => dataptr(gam(n),i)
+                u0p => dataptr(u0(n),i)
+                Wp => dataptr(W_lor(n),i)
 
-                u0p(:,:,:) = W_lor(:,:,:) / alphap(:,:,:)
+                u0p(:,:,:,1) = Wp(:,:,:,1) / alphap(:,:,:,1)
             enddo
         enddo
 
@@ -188,7 +190,7 @@ contains
         real(kind=dp_t)   , intent(out) :: met(0:,0:)
 
         integer             :: i, j, k, m, n
-        real(kind=dp_t)     :: eye(:3,:3)
+        real(kind=dp_t)     :: eye(1:3,1:3)
 
         ! make identity matrix
         eye(:,:) = 0.d0
@@ -233,45 +235,42 @@ contains
 
         real(kind=dp_t)   , intent(inout) :: chrls(:,0:,0:,0:,0:,0:,0:)
 
-        real(kind=dp_t), pointer:: alphap(:,:,:)
+        real(kind=dp_t), pointer:: alphap(:,:,:,:)
         real(kind=dp_t), pointer:: betap(:,:,:,:)
         real(kind=dp_t), pointer:: gamp(:,:,:,:)
         integer     :: nlevs, n, i
-        real(kind=dp_t)         :: g_ralph2(0:,0:,0:)
 
         nlevs = mla%nlevel
 
         do n = 1, nlevs
             do i = 1, nfabs(alpha(n))
-                alphap => dataptr(alpha(n))
-                betap => dataptr(beta(n))
-                gamp => dataptr(gam(n))
-
-                g_ralph2(:,:,:) = g / (Rr * alphap(:,:,:)**2)
+                alphap => dataptr(alpha(n),i)
+                betap => dataptr(beta(n),i)
+                gamp => dataptr(gam(n),i)
 
                 ! cartesian weak field
                 ! t_tr
-                chrls(n,0,0,3,:,:,:) = g_ralph2(:,:,:)
+                chrls(n,0,0,3,:,:,:) = g / (Rr * alphap(:,:,:,1)**2)
                 ! t_rt
                 chrls(n,0,3,0,:,:,:) = chrls(n,0,0,3,:,:,:)
                 ! r_tt
-                chrls(n,3,0,0,:,:,:) = g * alphap(:,:,:)**2 / (c**2 * Rr)
+                chrls(n,3,0,0,:,:,:) = g * alphap(:,:,:,1)**2 / (c**2 * Rr)
                 ! r_xx
-                chrls(n,3,1,1,:,:,:) = g_ralph2(:,:,:)
+                chrls(n,3,1,1,:,:,:) = chrls(n,0,0,3,:,:,:)
                 ! r_yy
-                chrls(n,3,2,2,:,:,:) = g_ralph2(:,:,:)
+                chrls(n,3,2,2,:,:,:) = chrls(n,0,0,3,:,:,:)
                 !r_rr
-                chrls(n,3,3,3,:,:,:) = -g_ralph2(:,:,:)
+                chrls(n,3,3,3,:,:,:) = -chrls(n,0,0,3,:,:,:)
                 ! r_xr
-                chrls(n,3,1,3,:,:,:) = -g_ralph2(:,:,:)
+                chrls(n,3,1,3,:,:,:) = -chrls(n,0,0,3,:,:,:)
                 ! r_rx
                 chrls(n,3,3,1,:,:,:) = chrls(n,3,1,3,:,:,:)
                 ! x_rx
-                chrls(n,1,3,1,:,:,:) = -g_ralph2(:,:,:)
+                chrls(n,1,3,1,:,:,:) = -chrls(n,0,0,3,:,:,:)
                 ! x_xr
                 chrls(n,1,1,3,:,:,:) = chrls(n,1,3,1,:,:,:)
                 ! y_yr
-                chrls(n,2,2,3,:,:,:) = -g_ralph2(:,:,:)
+                chrls(n,2,2,3,:,:,:) = -chrls(n,0,0,3,:,:,:)
                 ! y_ry
                 chrls(n,2,3,2,:,:,:) = chrls(n,2,2,3,:,:,:)
             enddo

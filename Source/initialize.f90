@@ -682,8 +682,8 @@ contains
 
        ! recompute time step
        dt = 1.d20
-       call estdt(mla,the_bc_tower,uold,sold,gpi,Source_old,dSdt, &
-                  w0,rho0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt)
+       !call estdt(mla,the_bc_tower,uold,sold,gpi,Source_old,dSdt, &
+        !          w0,rho0_old,Dh0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt,u0,chrls,gam)
 
     end if ! end spherical restart_into_finer initialization
 
@@ -703,7 +703,7 @@ contains
                                          gamma1bar,gamma1bar_hold,s0_init,rho0_old, &
                                          rhoh0_old,rho0_new,rhoh0_new,p0_init, &
                                          p0_old,p0_new,w0,etarho_ec,etarho_cc, &
-                                         psi,tempbar,tempbar_init,grav_cell)
+                                         psi,tempbar,tempbar_init,grav_cell,chrls)
 
     use box_util_module
     use init_scalar_module
@@ -716,6 +716,8 @@ contains
     use enforce_HSE_module
     use rhoh_vs_t_module
     use time_module, only: time
+    use geometry, only: nr, r_edge_loc
+    use metric_module
 
     type(ml_layout),intent(out  ) :: mla
     real(dp_t)    , intent(inout) :: dt
@@ -724,13 +726,14 @@ contains
     type(multifab), pointer       :: uold(:),sold(:),gpi(:),pi(:),dSdt(:)
     type(multifab), pointer       :: Source_old(:),Source_new(:)
     type(multifab), pointer       :: rho_omegadot2(:),rho_Hnuc2(:),rho_Hext(:),thermal2(:)
-    type(multifab), pointer       :: alpha(:), beta(:), gam(:), u0(:)
+    type(multifab), pointer       :: alpha(:), beta(:), gam(:), u0(:), W(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
     real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
     real(dp_t)    , pointer       :: rhoh0_old(:,:),rho0_new(:,:),rhoh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
+    real(dp_t)    , pointer       :: chrls(:,:,:,:,:,:,:)
 
     ! local
     type(ml_boxarray) :: mba
@@ -797,6 +800,7 @@ contains
        call multifab_build(         beta(n), mla%la(n),    dm, 0)
        call multifab_build(          gam(n), mla%la(n),    dm, 0)
        call multifab_build(           u0(n), mla%la(n),     1, 0)
+       call multifab_build(            W(n), mla%la(n),     1, 0)
 
        call setval(         uold(n), ZERO, all=.true.)
        call setval(         sold(n), ZERO, all=.true.)
@@ -862,6 +866,7 @@ contains
 
     ! make metric stuff
     call make_weak_field(nr,r_edge_loc,alpha,beta,gam,mla)
+    call christoffels(alpha,beta,gam,chrls,mla)
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
@@ -1372,7 +1377,7 @@ contains
   subroutine initialize_1d_arrays(num_levs,div_coeff_old,div_coeff_new,gamma1bar, &
                                   gamma1bar_hold,s0_init,rho0_old,rhoh0_old,rho0_new, &
                                   rhoh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc, &
-                                  psi,tempbar,tempbar_init,grav_cell,u0)
+                                  psi,tempbar,tempbar_init,grav_cell)
 
     integer    , intent(in) :: num_levs
     real(dp_t) , pointer    :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
