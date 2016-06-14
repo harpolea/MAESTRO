@@ -61,7 +61,6 @@ contains
             enddo
         enddo
 
-
     end subroutine make_weak_field
 
     subroutine inverse_metric(alpha, beta, gam, g_up)
