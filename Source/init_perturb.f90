@@ -1,5 +1,5 @@
-! apply an optional perturbation to the scalar state.  This routine 
-! is called on a zone-by-zone basis from init_scalar_data.  It is 
+! apply an optional perturbation to the scalar state.  This routine
+! is called on a zone-by-zone basis from init_scalar_data.  It is
 ! assumed that the perturbation is done at constant pressure.
 
 module init_perturb_module
@@ -29,7 +29,7 @@ contains
     real(kind=dp_t) :: temp
 
     type (eos_t) :: eos_state
-    
+
 
     temp = s0_init(temp_comp)
 
@@ -73,7 +73,7 @@ contains
     ! apply some perturbation to density here
     ! temp = ...
 
-    ! use the EOS to make this temperature perturbation occur at constant 
+    ! use the EOS to make this temperature perturbation occur at constant
     ! pressure
     eos_state%T     = temp
     eos_state%p     = p0_init
@@ -110,11 +110,12 @@ contains
     ! apply some perturbation to density here
     ! temp = ...
 
-    ! use the EOS to make this temperature perturbation occur at constant 
+    ! use the EOS to make this temperature perturbation occur at constant
     ! pressure
     eos_state%T     = temp
     eos_state%p     = p0_init
     eos_state%rho   = s0_init(rho_comp)
+    print *, s0_init(rho_comp)
     eos_state%xn(:) = s0_init(spec_comp:spec_comp+nspec-1)/s0_init(rho_comp)
 
     call eos(eos_input_tp, eos_state)
@@ -130,4 +131,3 @@ contains
   end subroutine perturb_3d_sphr
 
 end module init_perturb_module
-

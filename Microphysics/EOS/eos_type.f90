@@ -130,8 +130,16 @@ contains
     state % mu_e = ONE / (sum(state % xn(:) * zion(:) / aion(:)))
     state % y_e = ONE / state % mu_e
 
-    state % abar = ONE / (sum(state % xn(:) / aion(:)))
-    state % zbar = state % abar / state % mu_e
+    if ((sum(state % xn(:) / aion(:))) .eq. 0.d0) then
+        state % abar = ONE
+    else
+        state % abar = ONE / (sum(state % xn(:) / aion(:)))
+    endif
+    if (state % mu_e .eq. 0.d0) then
+        state % zbar = ONE
+    else
+        state % zbar = state % abar / state % mu_e
+    endif
 
   end subroutine composition
 

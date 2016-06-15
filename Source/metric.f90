@@ -18,29 +18,30 @@ module metric_module
     private :: root_find_on_me, Newton_Raphson
 
     public :: make_weak_field, inverse_metric, calcW, calcu0, &
-              g, christoffels, cons_to_prim
+              g, christoffels, cons_to_prim, prim_to_cons
 
 contains
 
-    subroutine make_weak_field(nr, rs, alpha, beta, gam, mla)
+    subroutine make_weak_field(alpha, beta, gam, mla,dx)
         ! NOTE: gam is a vector as will assume it is a diagonal matrix
         ! Returns alpha, beta and gamma of weak field metric
         ! FIXME: I have no idea how to implement this in a useful way.
 
-        use probin_module, only : g, Rr, c
+        use probin_module, only : g, Rr, c, prob_lo
 
         type(multifab) , intent(inout) :: alpha(:)
         type(multifab) , intent(inout) :: beta(:)
         type(multifab) , intent(inout) :: gam(:)
-        integer, intent(in)    :: nr(:)
-        real(kind=dp_t)   , intent(in) :: rs(:,:)
         type(ml_layout), intent(inout) :: mla
+        real(kind=dp_t), intent(in   ) :: dx(:,:)
 
         real(kind=dp_t), pointer :: alphap(:,:,:,:)
         real(kind=dp_t), pointer :: betap(:,:,:,:)
         real(kind=dp_t), pointer :: gamp(:,:,:,:)
 
+        real(kind=dp_t) :: rad
         integer :: n, i, j, dm, nlevs
+        integer :: lo(mla%dim), hi(mla%dim)
 
         nlevs = mla%nlevel
 
@@ -50,12 +51,19 @@ contains
                 alphap => dataptr(alpha(n),j)
                 betap => dataptr(beta(n),j)
                 gamp => dataptr(gam(n),j)
+                lo = lwb(get_box(alpha(n), j))
+                hi = upb(get_box(alpha(n), j))
 
                 betap = 0.d0
 
-                do i = 0, nr(n)
-                    alphap(:,:,i,1) = sqrt(1.d0 - 2.d0 * (1.d0 - rs(n,i) / Rr) * g / c**2)
-                    gamp(:,:,i,:) = 1.d0 + 2.d0 * (1.d0 - rs(n,i) / Rr) * g / c**2
+                do i = lo(3), hi(3)
+
+
+                    rad = prob_lo(3) + (dble(i) + HALF) * dx(n,3)
+                    !print *, 'radial coord: ', rad
+                    !print *,  2.d0 * (1.d0 - rad / Rr) * g / c**2
+                    alphap(:,:,i,1) = sqrt(1.d0 - 2.d0 * (1.d0 - rad / Rr) * g / c**2)
+                    gamp(:,:,i,:) = 1.d0 + 2.d0 * (1.d0 - rad / Rr) * g / c**2
                 enddo
 
             enddo
@@ -111,7 +119,7 @@ contains
         real(kind=dp_t), pointer:: gamp(:,:,:,:)
         real(kind=dp_t), pointer:: up(:,:,:,:)
         real(kind=dp_t), pointer:: Wp(:,:,:,:)
-        integer     :: dm, nlevs, n, i, j, k
+        integer     :: dm, nlevs, n, i, j, k, lo(mla%dim), hi(mla%dim)
         real(kind=dp_t)     :: eye(1:3,1:3)
 
         ! make identity matrix
@@ -120,6 +128,8 @@ contains
             eye(i,i) = 1.d0
         enddo
 
+        nlevs = mla%nlevel
+
         do n = 1, nlevs
             do k = 1, nfabs(alpha(n))
                 alphap => dataptr(alpha(n),k)
@@ -127,20 +137,21 @@ contains
                 gamp => dataptr(gam(n),k)
                 up => dataptr(u(n),k)
                 Wp => dataptr(W_lor(n),k)
+                lo = lwb(get_box(alpha(n), k))
+                hi = upb(get_box(alpha(n), k))
 
-                Wp(:,:,:,:) = 0.d0
+                Wp(:,:,:,1) = ZERO
 
                 do i = 1, 3
                     do j = 1, 3
                         Wp(:,:,:,1) = Wp(:,:,:,1) + eye(i,j) * &
-                        gamp(i,:,:,:) * (up(:,:,:,i) + betap(:,:,:,i)) * &
-                        (up(:,:,:,j) + betap(:,:,:,j)) / alphap(:,:,:,1)**2
+                        gamp(:,:,:,i) * (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) + betap(:,:,:,i)) * &
+                        (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j) + betap(:,:,:,j)) / alphap(:,:,:,1)**2
                     enddo
                 enddo
+                Wp(:,:,:,1) = ONE / sqrt(1.d0 - Wp(:,:,:,1)/c**2)
             enddo
         enddo
-
-        Wp(:,:,:,:) = 1 / sqrt(1 - Wp(:,:,:,:)/c**2)
 
     end subroutine calcW
 
@@ -238,23 +249,34 @@ contains
         real(kind=dp_t), pointer:: alphap(:,:,:,:)
         real(kind=dp_t), pointer:: betap(:,:,:,:)
         real(kind=dp_t), pointer:: gamp(:,:,:,:)
-        integer     :: nlevs, n, i
+        integer     :: nlevs, n, m, i, j, k, lo(mla%dim), hi(mla%dim)
 
         nlevs = mla%nlevel
 
+        chrls(:,:,:,:,:,:,:) = ZERO
+
         do n = 1, nlevs
-            do i = 1, nfabs(alpha(n))
-                alphap => dataptr(alpha(n),i)
-                betap => dataptr(beta(n),i)
-                gamp => dataptr(gam(n),i)
+            do m = 1, nfabs(alpha(n))
+                alphap => dataptr(alpha(n),m)
+                betap => dataptr(beta(n),m)
+                gamp => dataptr(gam(n),m)
+                lo =  lwb(get_box(alpha(n), m))
+                hi =  upb(get_box(alpha(n), m))
+
+                do k = lo(3), hi(3)
+                    do j = lo(2), hi(2)
+                        do i = lo(1), hi(1)
+                            ! t_tr
+                            chrls(n,0,0,3,i,j,k) = g / (Rr * alphap(i,j,k,1)**2)
+                            ! r_tt
+                            chrls(n,3,0,0,i,j,k) = g * alphap(i,j,k,1)**2 / (c**2 * Rr)
+                        enddo
+                    enddo
+                enddo
 
                 ! cartesian weak field
-                ! t_tr
-                chrls(n,0,0,3,:,:,:) = g / (Rr * alphap(:,:,:,1)**2)
                 ! t_rt
                 chrls(n,0,3,0,:,:,:) = chrls(n,0,0,3,:,:,:)
-                ! r_tt
-                chrls(n,3,0,0,:,:,:) = g * alphap(:,:,:,1)**2 / (c**2 * Rr)
                 ! r_xx
                 chrls(n,3,1,1,:,:,:) = chrls(n,0,0,3,:,:,:)
                 ! r_yy
@@ -421,5 +443,64 @@ contains
       endif
 
     end subroutine Newton_Raphson
+
+    subroutine prim_to_cons(s, u, u0, s_prim, u_prim, mla)
+        use variables, only: rho_comp, rhoh_comp, spec_comp
+        ! FIXME: need to import thermal gamma
+        use probin_module, only : gamm_therm
+
+        type(multifab), intent(inout) :: s(:)
+        type(multifab), intent(in) :: u(:)
+        type(multifab), intent(in) :: u0(:)
+        type(multifab), intent(in) :: s_prim(:)
+        type(multifab), intent(inout) :: u_prim(:)
+        type(ml_layout)   , intent(inout) :: mla
+
+        real(kind=dp_t), pointer ::  sp(:,:,:,:)
+        real(kind=dp_t), pointer ::  up(:,:,:,:)
+        real(kind=dp_t), pointer ::  u0p(:,:,:,:)
+        real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
+        real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
+
+        integer :: i,m,n,nlevs
+
+        nlevs = mla%nlevel
+
+        do n=1,nlevs
+           do m=1,nfabs(s(n))
+               sp => dataptr(s(n), m)
+               up => dataptr(u(n), m)
+               u0p => dataptr(u0(n), m)
+               s_primp => dataptr(s_prim(n), m)
+               u_primp => dataptr(u_prim(n), m)
+
+               sp(:,:,:,rho_comp) = s_primp(:,:,:,rho_comp) * u0p(:,:,:,1)
+               sp(:,:,:,rhoh_comp) = s_primp(:,:,:,rhoh_comp) * u0p(:,:,:,1)
+               sp(:,:,:,spec_comp) = s_primp(:,:,:,spec_comp) * u0p(:,:,:,1)
+               do i = 1, mla%dim
+                   up(:,:,:,i) = u_primp(:,:,:,i) / u0p(:,:,:,1)
+               enddo
+           enddo
+       enddo
+
+
+   end subroutine prim_to_cons
+
+   subroutine prim_to_cons_1d(s, u0_1d, s_prim)
+       use variables, only: rho_comp, rhoh_comp, spec_comp
+       ! FIXME: need to import thermal gamma
+       use probin_module, only : gamm_therm
+
+       real(kind=dp_t), intent(inout) :: s(:,:,:)
+       real(kind=dp_t), intent(in) :: u0_1d(:,:)
+       real(kind=dp_t), intent(in) :: s_prim(:,:,:)
+
+
+       s(:,:,rho_comp) = s_prim(:,:,rho_comp) * u0_1d(:,:)
+       s(:,:,rhoh_comp) = s_prim(:,:,rhoh_comp) * u0_1d(:,:)
+       s(:,:,spec_comp) = s_prim(:,:,spec_comp) * u0_1d(:,:)
+
+
+  end subroutine prim_to_cons_1d
 
 end module metric_module

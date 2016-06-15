@@ -25,7 +25,7 @@ contains
                                      dSdt,Source_old,Source_new, &
                                      rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,the_bc_tower, &
                                      div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                                     s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                                     s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                                      p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi, &
                                      tempbar,tempbar_init,grav_cell)
 
@@ -52,6 +52,7 @@ contains
     use aux_data_module
     use ml_restrict_fill_module
     use pert_form_module, only: put_in_pert_form
+    use metric_module, only: prim_to_cons_1d
 
     type(ml_layout),intent(out)   :: mla
     integer       , intent(inout) :: restart
@@ -63,7 +64,7 @@ contains
     type(multifab), pointer       :: rho_omegadot2(:),rho_Hnuc2(:),rho_Hext(:),thermal2(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
@@ -102,6 +103,8 @@ contains
     character(len=6)   :: check_index6
     character(len=7)   :: check_index7
     character(len=256) :: check_file_name
+
+    print *, 'INITIALISE FROM RESTART'
 
     ! sanity check
     if (drive_initial_convection .and. restart_with_vel_field) then
@@ -322,20 +325,22 @@ contains
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                              s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                              s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                               p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
                               grav_cell)
 
     if (restart_with_vel_field) then
 
        if (spherical .eq. 1) then
-          call init_base_state(1,model_file,s0_init(1,:,:),p0_init(1,:),dx(max_levs,:))
+          call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:))
        else
           ! init_base_state requires loop backwards over levels
           do n=max_levs,1,-1
-             call init_base_state(n,model_file,s0_init(n,:,:),p0_init(n,:),dx(n,:))
+             call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:))
           end do
        end if
+
+       call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
 
        p0_old       = p0_init
        D0_old     = s0_init(:,:,rho_comp)
@@ -585,7 +590,7 @@ contains
 
        ! reallocate 1D arrays
        call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar, &
-                                 gamma1bar_hold,s0_init,D0_old,Dh0_old,D0_new, &
+                                 gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old,D0_new, &
                                  Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                  psi,tempbar,tempbar_init,grav_cell)
 
@@ -698,9 +703,9 @@ contains
                                          dSdt,Source_old,Source_new, &
                                          rho_omegadot2,rho_Hnuc2,rho_Hext, &
                                          thermal2, &
-                                         alpha, beta, gam, u0, &
+                                         alpha, beta, gam, u0, W, &
                                          the_bc_tower,div_coeff_old,div_coeff_new, &
-                                         gamma1bar,gamma1bar_hold,s0_init,D0_old, &
+                                         gamma1bar,gamma1bar_hold,s0_init,sprim0_init,D0_old, &
                                          Dh0_old,D0_new,Dh0_new,p0_init, &
                                          p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                          psi,tempbar,tempbar_init,grav_cell,chrls)
@@ -729,7 +734,7 @@ contains
     type(multifab), pointer       :: alpha(:), beta(:), gam(:), u0(:), W(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
@@ -747,6 +752,8 @@ contains
     ! set time and dt
     time = ZERO
     dt = 1.d20
+
+    print *, 'USING FIXED GRIDS'
 
     ! create mba
     call read_a_hgproj_grid(mba,test_set)
@@ -775,7 +782,7 @@ contains
     allocate(uold(nlevs),sold(nlevs),gpi(nlevs),pi(nlevs))
     allocate(dSdt(nlevs),Source_old(nlevs),Source_new(nlevs))
     allocate(rho_omegadot2(nlevs),rho_Hnuc2(nlevs),rho_Hext(nlevs),thermal2(nlevs))
-    allocate(alpha(nlevs),beta(nlevs),gam(nlevs),u0(nlevs))
+    allocate(alpha(nlevs),beta(nlevs),gam(nlevs),u0(nlevs),W(nlevs))
 
     if (ppm_type .eq. 2 .or. bds_type .eq. 1) then
        ng_s = 4
@@ -817,6 +824,7 @@ contains
        call setval(         beta(n), ZERO, all=.true.)
        call setval(          gam(n), ZERO, all=.true.)
        call setval(           u0(n), ZERO, all=.true.)
+       call setval(            W(n), ZERO, all=.true.)
     end do
     ! initialize dx
     call initialize_dx(dx,mba,nlevs)
@@ -865,29 +873,37 @@ contains
     call init_radial(nlevs,mba)
 
     ! make metric stuff
-    call make_weak_field(nr,r_edge_loc,alpha,beta,gam,mla)
+    call make_weak_field(alpha,beta,gam,mla,dx)
+    allocate(chrls     (nlevs,0:dm,0:dm,0:dm,0:extent(mla%mba%pd(nlevs),1),0:extent(mla%mba%pd(nlevs),2),0:nr_fine-1))
     call christoffels(alpha,beta,gam,chrls,mla)
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                              s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                              s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                               p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
                               grav_cell)
 
     ! now that we have dr and nr we can fill initial state
     if (spherical .eq. 1) then
-       call init_base_state(1,model_file,s0_init(1,:,:),p0_init(1,:),dx(nlevs,:))
+       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(nlevs,:))
     else
        ! init_base_state requires loop backwards over levels
        do n=nlevs,1,-1
-          call init_base_state(n,model_file,s0_init(n,:,:),p0_init(n,:),dx(n,:))
+          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:))
        end do
     end if
 
-    call initveldata(uold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
-    call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
-    call calcu0(alpha, beta, gam, uold, u0, mla)
+    call initveldata(uold,sprim0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+
+    call calcW(alpha, beta, gam, uold, mla, W)
+    call calcu0(alpha, beta, gam, W, u0, mla)
+    ! set u0_1d to be average
+    call average(mla,u0,u0_1d,dx,1)
+
+    call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
+
+    call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
     p0_old       = p0_init
     D0_old     = s0_init(:,:,rho_comp)
@@ -918,9 +934,6 @@ contains
 
        call enforce_TOV(D0_old,p0_old,u0)
 
-       ! set u0_1d to be average
-       call average(mla,u0,u0_1d,dx,1)
-
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
@@ -942,11 +955,12 @@ contains
                                             dSdt,Source_old,Source_new, &
                                             rho_omegadot2,rho_Hnuc2,rho_Hext, &
                                             thermal2, &
+                                            alpha, beta, gam, u0, W, &
                                             the_bc_tower,div_coeff_old,div_coeff_new, &
-                                            gamma1bar,gamma1bar_hold,s0_init,D0_old, &
+                                            gamma1bar,gamma1bar_hold,s0_init,sprim0_init,D0_old, &
                                             Dh0_old,D0_new,Dh0_new,p0_init, &
                                             p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
-                                            psi,tempbar,tempbar_init,grav_cell)
+                                            psi,tempbar,tempbar_init,grav_cell,chrls)
 
     use probin_module, only: n_cellx, n_celly, n_cellz, &
          amr_buf_width, max_grid_size_1, max_grid_size_2, max_grid_size_3, &
@@ -964,6 +978,8 @@ contains
     use rhoh_vs_t_module
     use time_module, only: time
     use pert_form_module, only: put_in_pert_form_one_level
+    use geometry, only: nr, r_edge_loc
+    use metric_module
 
     type(ml_layout),intent(out  ) :: mla
     real(dp_t)    , intent(inout) :: dt
@@ -972,12 +988,14 @@ contains
     type(multifab), pointer       :: uold(:),sold(:),gpi(:),pi(:),dSdt(:)
     type(multifab), pointer       :: Source_old(:),Source_new(:)
     type(multifab), pointer       :: rho_omegadot2(:),rho_Hnuc2(:),rho_Hext(:),thermal2(:)
+    type(multifab), pointer       :: alpha(:), beta(:), gam(:), u0(:), W(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
+    real(dp_t)    , pointer       :: chrls(:,:,:,:,:,:,:)
 
     ! local
     type(ml_boxarray) :: mba
@@ -998,6 +1016,7 @@ contains
     time = ZERO
     dt = 1.d20
 
+    print *, 'NOOO ADAPTIVE GRIDS'
     dm = dm_in
 
     ! set up hi & lo to carry indexing info
@@ -1020,6 +1039,7 @@ contains
     allocate(uold(max_levs),sold(max_levs),gpi(max_levs),pi(max_levs))
     allocate(dSdt(max_levs),Source_old(max_levs),Source_new(max_levs))
     allocate(rho_omegadot2(max_levs),rho_Hnuc2(max_levs),rho_Hext(max_levs),thermal2(max_levs))
+    allocate(alpha(max_levs),beta(max_levs),gam(max_levs),u0(max_levs),W(max_levs))
 
     ! Build the level 1 boxarray
     call box_build_2(bxs,lo,hi)
@@ -1075,19 +1095,22 @@ contains
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(max_levs,div_coeff_old,div_coeff_new,gamma1bar, &
-                              gamma1bar_hold,s0_init,D0_old,Dh0_old,D0_new, &
+                              gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old,D0_new, &
                               Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                               psi,tempbar,tempbar_init,grav_cell)
 
     ! now that we have dr and nr we can fill initial state
     if (spherical .eq. 1) then
-       call init_base_state(1,model_file,s0_init(1,:,:),p0_init(1,:),dx(max_levs,:))
+       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:))
     else
           ! init_base_state requires loop backwards over levels
        do n=max_levs,1,-1
-          call init_base_state(n,model_file,s0_init(n,:,:),p0_init(n,:),dx(n,:))
+          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:))
        end do
     end if
+
+    ! This will be a trivial thing at this point as u0_1d = 1 here.
+    call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
 
     ! Initialize bc's
     call initialize_bc(the_bc_tower,max_levs,pmask)
@@ -1304,6 +1327,11 @@ contains
        call multifab_build(    rho_Hnuc2(n), mla%la(n),     1, 0)
        call multifab_build(     rho_Hext(n), mla%la(n),     1, 0)
        call multifab_build(     thermal2(n), mla%la(n),     1, 0)
+       call multifab_build(        alpha(n), mla%la(n),     1, 0)
+       call multifab_build(         beta(n), mla%la(n),    dm, 0)
+       call multifab_build(          gam(n), mla%la(n),    dm, 0)
+       call multifab_build(           u0(n), mla%la(n),     1, 0)
+       call multifab_build(            W(n), mla%la(n),     1, 0)
 
        call setval(         uold(n), ZERO, all=.true.)
        call setval(         sold(n), ZERO, all=.true.)
@@ -1316,6 +1344,11 @@ contains
        call setval(    rho_Hnuc2(n), ZERO, all=.true.)
        call setval(     rho_Hext(n), ZERO, all=.true.)
        call setval(     thermal2(n), ZERO, all=.true.)
+       call setval(        alpha(n), ZERO, all=.true.)
+       call setval(         beta(n), ZERO, all=.true.)
+       call setval(          gam(n), ZERO, all=.true.)
+       call setval(           u0(n), ZERO, all=.true.)
+       call setval(            W(n), ZERO, all=.true.)
     end do
 
     ! compute nr_irreg
@@ -1330,8 +1363,27 @@ contains
     ! create numdisjointchunks, r_start_coord, r_end_coord
     call init_multilevel(sold)
 
-    call initveldata(uold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+    !print *, 'MAKE WEAK FIELD'
+
+    ! make metric stuff
+    call make_weak_field(alpha,beta,gam,mla,dx(:,:))
+    allocate(chrls     (max_levs,0:dm,0:dm,0:dm, &
+    0:extent(mla%mba%pd(max_levs),1),0:extent(mla%mba%pd(max_levs),2),0:nr_fine-1))
+    call christoffels(alpha,beta,gam,chrls,mla)
+
+    call initveldata(uold,sprim0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+
+    call calcW(alpha, beta, gam, uold, mla, W)
+
+    call calcu0(alpha, beta, gam, W, u0, mla)
+    ! set u0_1d to be average
+    call average(mla,u0,u0_1d,dx,1)
+
+    call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
+
     call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+
+
 
     p0_old       = p0_init
     D0_old     = s0_init(:,:,rho_comp)
@@ -1358,8 +1410,8 @@ contains
        call compute_cutoff_coords(D0_old)
 
        ! compute p0 with HSE
-       call make_grav_cell(grav_cell,D0_old)
-       call enforce_HSE(D0_old,p0_old,grav_cell)
+       !call make_grav_cell(grav_cell,D0_old)
+       call enforce_TOV(D0_old,p0_old,u0)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
@@ -1378,13 +1430,13 @@ contains
 
 
   subroutine initialize_1d_arrays(num_levs,div_coeff_old,div_coeff_new,gamma1bar, &
-                                  gamma1bar_hold,s0_init,D0_old,Dh0_old,D0_new, &
+                                  gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old,D0_new, &
                                   Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                   psi,tempbar,tempbar_init,grav_cell)
 
     integer    , intent(in) :: num_levs
     real(dp_t) , pointer    :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t) , pointer    :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t) , pointer    :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t) , pointer    :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t) , pointer    :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:),etarho_cc(:,:)
     real(dp_t) , pointer    :: psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
@@ -1395,6 +1447,7 @@ contains
        allocate(gamma1bar     (num_levs,0:nr_fine-1))
        allocate(gamma1bar_hold(num_levs,0:nr_fine-1))
        allocate(s0_init       (num_levs,0:nr_fine-1,nscal))
+       allocate(sprim0_init       (num_levs,0:nr_fine-1,nscal))
        allocate(D0_old      (num_levs,0:nr_fine-1))
        allocate(Dh0_old     (num_levs,0:nr_fine-1))
        allocate(D0_new      (num_levs,0:nr_fine-1))
@@ -1403,7 +1456,7 @@ contains
        allocate(p0_old        (num_levs,0:nr_fine-1))
        allocate(p0_new        (num_levs,0:nr_fine-1))
        allocate(w0            (num_levs,0:nr_fine))
-       allocate(u0_1d            (num_levs,0:nr_fine))
+       allocate(u0_1d         (num_levs,0:nr_fine-1))
        allocate(etarho_ec     (num_levs,0:nr_fine))
        allocate(etarho_cc     (num_levs,0:nr_fine-1))
        allocate(psi           (num_levs,0:nr_fine-1))
@@ -1416,6 +1469,7 @@ contains
        allocate(gamma1bar     (1,0:nr_fine-1))
        allocate(gamma1bar_hold(1,0:nr_fine-1))
        allocate(s0_init       (1,0:nr_fine-1,nscal))
+       allocate(sprim0_init       (1,0:nr_fine-1,nscal))
        allocate(D0_old      (1,0:nr_fine-1))
        allocate(Dh0_old     (1,0:nr_fine-1))
        allocate(D0_new      (1,0:nr_fine-1))
@@ -1424,7 +1478,7 @@ contains
        allocate(p0_old        (1,0:nr_fine-1))
        allocate(p0_new        (1,0:nr_fine-1))
        allocate(w0            (1,0:nr_fine))
-       allocate(u0_1d            (1,0:nr_fine))
+       allocate(u0_1d         (1,0:nr_fine-1))
        allocate(etarho_ec     (1,0:nr_fine))
        allocate(etarho_cc     (1,0:nr_fine-1))
        allocate(psi           (1,0:nr_fine-1))
@@ -1438,6 +1492,7 @@ contains
     gamma1bar = ZERO
     gamma1bar_hold = ZERO
     s0_init = ZERO
+    sprim0_init = ZERO
     D0_old = ZERO
     Dh0_old = ZERO
     D0_new = ZERO
@@ -1446,7 +1501,7 @@ contains
     p0_old = ZERO
     p0_new = ZERO
     w0 = ZERO
-    u0_1d = ZERO
+    u0_1d = ONE
     etarho_ec = ZERO
     etarho_cc = ZERO
     psi = ZERO

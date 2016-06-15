@@ -87,6 +87,7 @@ subroutine varden()
   type(multifab), pointer :: beta(:)
   type(multifab), pointer :: gam(:)
   type(multifab), pointer :: u0(:)
+  type(multifab), pointer :: W(:)
 
   type(multifab), pointer :: chkdata(:)
 
@@ -106,6 +107,7 @@ subroutine varden()
   real(dp_t), pointer :: gamma1bar(:,:)
   real(dp_t), pointer :: gamma1bar_hold(:,:)
   real(dp_t), pointer :: s0_init(:,:,:)
+  real(dp_t), pointer :: sprim0_init(:,:,:)
   real(dp_t), pointer :: D0_old(:,:)
   real(dp_t), pointer :: Dh0_old(:,:)
   real(dp_t), pointer :: D0_new(:,:)
@@ -200,7 +202,7 @@ subroutine varden()
                   dSdt,Source_old,Source_new, &
                   rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,the_bc_tower, &
                   div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                  s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                  s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                   p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi, &
                   tempbar,tempbar_init,grav_cell)
 
@@ -218,10 +220,10 @@ subroutine varden()
      call initialize_with_fixed_grids(mla,dt,pmask,dx,uold,sold,gpi,pi,dSdt, &
                   Source_old,Source_new, &
                   rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
-                  alpha, beta, gam, u0, &
+                  alpha, beta, gam, u0, W,&
                   the_bc_tower, &
                   div_coeff_old,div_coeff_new,gamma1bar, &
-                  gamma1bar_hold,s0_init,D0_old,Dh0_old, &
+                  gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old, &
                   D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d, &
                   etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell,chrls)
 
@@ -232,11 +234,12 @@ subroutine varden()
      call initialize_with_adaptive_grids(mla,dt,pmask,dx,uold,sold,gpi,pi,dSdt, &
                      Source_old,Source_new, &
                      rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
+                     alpha, beta, gam, u0, W,&
                      the_bc_tower, &
                      div_coeff_old,div_coeff_new,gamma1bar, &
-                     gamma1bar_hold,s0_init,D0_old,Dh0_old, &
+                     gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old, &
                      D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d, &
-                     etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell)
+                     etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell,chrls)
 
   end if
 
