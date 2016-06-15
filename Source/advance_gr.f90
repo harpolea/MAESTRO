@@ -29,7 +29,7 @@ contains
 
   subroutine advance_timestep_gr(init_mode,mla,uold,sold,unew,snew, &
                               gpi,pi,normal,D0_old, Dh0_old, &
-                              D0_new,Dh0_new,p0_old,p0_new,tempbar,gamma1bar,w0, &
+                              D0_new,Dh0_new,p0_old,p0_new,tempbar,gamma1bar,w0,u0_1d,&
                               rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,&
                               div_coeff_old,div_coeff_new, &
                               grav_cell_old,dx,dt,dtold,the_bc_tower, &
@@ -102,6 +102,7 @@ contains
     real(dp_t)    ,  intent(inout) ::   tempbar_init(:,0:)
     real(dp_t)    ,  intent(inout) :: gamma1bar(:,0:)
     real(dp_t)    ,  intent(inout) ::        w0(:,0:)
+    real(dp_t)    ,  intent(inout) ::        u0_1d(:,0:)
     type(multifab),  intent(inout) :: rho_omegadot2(:)
     type(multifab),  intent(inout) :: rho_Hnuc2(:)
     type(multifab),  intent(inout) :: rho_Hext(:)
@@ -278,12 +279,11 @@ contains
     end if
 
     do n=1,nlevs
-       call multifab_build(s1(n),            mla%la(n), nscal, nghost(sold(n)))
+       call multifab_build(s1(n), mla%la(n), nscal, nghost(sold(n)))
        call multifab_build(rho_omegadot1(n), mla%la(n), nspec, 0)
        call multifab_build(rho_Hnuc1(n),     mla%la(n), 1,     0)
     end do
 
-    ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot1,rho_Hnuc1,rho_Hext,p0_old,halfdt,dx, &
                      the_bc_tower%bc_tower_array,chrls,uold)
 
@@ -473,7 +473,7 @@ contains
        call make_s0mac(mla,div_coeff_old,div_coeff_cart_edge,dx,foextrap_comp, &
                        the_bc_tower%bc_tower_array)
 
-       call macproject(mla,umac,macphi,sold,dx,the_bc_tower,macrhs, &
+       call macproject(mla,umac,macphi,sold,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_cart_edge=div_coeff_cart_edge)
 
        do n=1,nlevs
@@ -483,7 +483,7 @@ contains
        end do
     else
        call cell_to_edge(div_coeff_old,div_coeff_edge)
-       call macproject(mla,umac,macphi,sold,dx,the_bc_tower, &
+       call macproject(mla,umac,macphi,sold,u0,dx,the_bc_tower, &
                        macrhs,div_coeff_1d=div_coeff_old,div_coeff_1d_edge=div_coeff_edge)
     end if
 
@@ -768,7 +768,7 @@ contains
           call destroy(gamma1(n))
        end do
 
-       call make_div_coeff(div_coeff_new,D0_new,p0_new,gamma1bar,grav_cell_new)
+       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,grav_cell_new)
 
     else
 
@@ -978,7 +978,7 @@ contains
        call make_s0mac(mla,div_coeff_nph,div_coeff_cart_edge,dx,foextrap_comp, &
                        the_bc_tower%bc_tower_array)
 
-       call macproject(mla,umac,macphi,Dhalf,dx,the_bc_tower,macrhs, &
+       call macproject(mla,umac,macphi,Dhalf,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_cart_edge=div_coeff_cart_edge)
 
        do n=1,nlevs
@@ -988,7 +988,7 @@ contains
        end do
     else
        call cell_to_edge(div_coeff_nph,div_coeff_edge)
-       call macproject(mla,umac,macphi,Dhalf,dx,the_bc_tower,macrhs, &
+       call macproject(mla,umac,macphi,Dhalf,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_1d=div_coeff_nph,div_coeff_1d_edge=div_coeff_edge)
     end if
 
@@ -1285,7 +1285,7 @@ contains
        end do
 
        !  We used to call this even if evolve_base was false,but we don't need to
-       call make_div_coeff(div_coeff_new,D0_new,p0_new,gamma1bar,grav_cell_new)
+       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,grav_cell_new)
 
     end if
 

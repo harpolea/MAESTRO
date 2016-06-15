@@ -25,7 +25,7 @@ contains
     character(len=5) :: str_index
     character(len=6) :: str_index6
     character(len=7) :: str_index7
-    
+
     if (index <= 99999) then
        write(unit=str_index,fmt='(i5.5)') index
        filename = trim(base_name) // str_index
@@ -58,7 +58,7 @@ contains
     integer :: comp
 
     allocate(p%names(p%n_plot_comps))
-    
+
     if (p%icomp_vel > 0) then
        p%names(p%icomp_vel  ) = "x_vel"
        if (dm_in > 1) then
@@ -112,7 +112,7 @@ contains
     if (p%icomp_src > 0) p%names(p%icomp_src)         = "S"
     if (p%icomp_rhopert > 0) p%names(p%icomp_rhopert)     = "rhopert"
     if (p%icomp_rhohpert > 0) p%names(p%icomp_rhohpert)    = "rhohpert"
-  
+
     if (p%icomp_tfromp > 0) p%names(p%icomp_tfromp)      = "tfromp"
     if (p%icomp_tfromH > 0) p%names(p%icomp_tfromH)      = "tfromh"
     if (p%icomp_dT > 0) p%names(p%icomp_dT)          = "deltaT"
@@ -171,7 +171,7 @@ contains
   subroutine make_plotfile(p,dirname,mla,u,s,pi,gpi,rho_omegadot, &
                            rho_Hnuc,rho_Hext, &
                            thermal,Source,sponge,mba,dx, &
-                           the_bc_tower,w0,rho0,rhoh0,p0, &
+                           the_bc_tower,w0,u0_1d,rho0,rhoh0,p0, &
                            tempbar,gamma1bar,etarho_cc, &
                            normal,dt,particles,write_pf_time)
 
@@ -180,7 +180,7 @@ contains
     use variables
     use plot_variables_module
     use fill_3d_module
-    use probin_module, only: nOutFiles, lUsingNFiles, plot_spec, plot_trac, & 
+    use probin_module, only: nOutFiles, lUsingNFiles, plot_spec, plot_trac, &
                              plot_base, plot_omegadot, plot_Hnuc, plot_Hext, &
                              plot_eta, plot_ad_excess, &
                              single_prec_plotfiles, &
@@ -218,6 +218,7 @@ contains
     real(dp_t)       , intent(in   ) :: dt,dx(:,:)
     type(bc_tower)   , intent(in   ) :: the_bc_tower
     real(dp_t)       , intent(in   ) :: w0(:,0:)
+    real(dp_t)       , intent(in   ) :: u0_1d(:,0:)
     real(dp_t)       , intent(in   ) :: rho0(:,0:)
     real(dp_t)       , intent(in   ) :: rhoh0(:,0:)
     real(dp_t)       , intent(in   ) :: p0(:,0:)
@@ -265,7 +266,7 @@ contains
 
        ! for temporary storage, as needed
        call multifab_build(tempfab(n),  mla%la(n), dm,           1)
-              
+
        ! velocity
        if (p%icomp_vel > 0) then
           call multifab_copy_c(plotdata(n),p%icomp_vel,u(n),1,dm)
@@ -443,7 +444,7 @@ contains
              ! only one level of base state so rho0 is defined everywhere
              h0 = rhoh0 / rho0
           else
-             ! for Cartesian, rho0 will be zero in index locations where 
+             ! for Cartesian, rho0 will be zero in index locations where
              ! there is no grid at that resolution.  Prevent dividing
              ! by zero
              h0(:,:) = ZERO
@@ -531,7 +532,7 @@ contains
           if ( p%icomp_tfromp > 0 .or. p%icomp_tpert > 0 .or. &
                p%icomp_machno > 0 .or. p%icomp_cs > 0 .or. p%icomp_dg > 0 .or. &
                p%icomp_entropy > 0 .or. p%icomp_magvel > 0 ) then
-             
+
              call make_tfromp(p, plotdata(n), s(n), &
                               tempbar(1,:),gamma1bar(1,:),p0(1,:),dx(n,:))
           endif
@@ -559,7 +560,7 @@ contains
           endif
 
        end if
-       
+
     end do
 
     ! CONDUCTIVITY
@@ -594,7 +595,7 @@ contains
           call make_processor_number(plotdata(n),p%icomp_proc)
        enddo
     endif
-    
+
 
     ! the loop over nlevs must count backwards to make sure the finer grids are done first
     do n=nlevs,2,-1
@@ -651,8 +652,8 @@ contains
     if (use_alt_energy_fix) then
        ! make beta_0 on a multifab
        call make_grav_cell(grav_cell,rho0)
-       call make_div_coeff(div_coeff,rho0,p0,gamma1bar,grav_cell)
-       
+       call make_div_coeff(div_coeff,rho0,u0_1d,p0,gamma1bar,grav_cell)
+
        call put_1d_array_on_cart(div_coeff,tempfab,foextrap_comp,.false.,.false.,dx, &
                                  the_bc_tower%bc_tower_array,mla)
     endif
@@ -745,7 +746,7 @@ contains
                                  bcomp=foextrap_comp, &
                                  nc=1, &
                                  ng=tempfab(1)%ng)
-    
+
        call average(mla,tempfab,entropybar,dx,1)
 
        call make_entropypert(plotdata,p%icomp_entropy,p%icomp_entropypert,entropybar,dx)

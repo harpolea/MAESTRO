@@ -25,8 +25,8 @@ contains
                                      dSdt,Source_old,Source_new, &
                                      rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,the_bc_tower, &
                                      div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                                     s0_init,rho0_old,rhoh0_old,rho0_new,rhoh0_new,p0_init, &
-                                     p0_old,p0_new,w0,etarho_ec,etarho_cc,psi, &
+                                     s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                                     p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi, &
                                      tempbar,tempbar_init,grav_cell)
 
     use restart_module
@@ -63,9 +63,9 @@ contains
     type(multifab), pointer       :: rho_omegadot2(:),rho_Hnuc2(:),rho_Hext(:),thermal2(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
-    real(dp_t)    , pointer       :: rhoh0_old(:,:),rho0_new(:,:),rhoh0_new(:,:),p0_init(:,:)
-    real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),etarho_ec(:,:)
+    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
+    real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
 
     ! local
@@ -322,8 +322,8 @@ contains
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                              s0_init,rho0_old,rhoh0_old,rho0_new,rhoh0_new,p0_init, &
-                              p0_old,p0_new,w0,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
+                              s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                              p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
                               grav_cell)
 
     if (restart_with_vel_field) then
@@ -338,40 +338,40 @@ contains
        end if
 
        p0_old       = p0_init
-       rho0_old     = s0_init(:,:,rho_comp)
-       rhoh0_old    = s0_init(:,:,rhoh_comp)
+       D0_old     = s0_init(:,:,rho_comp)
+       Dh0_old    = s0_init(:,:,rhoh_comp)
        tempbar      = s0_init(:,:,temp_comp)
        tempbar_init = s0_init(:,:,temp_comp)
 
        call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
        if (fix_base_state) then
-          call compute_cutoff_coords(rho0_old)
-          call make_grav_cell(grav_cell,rho0_old)
+          call compute_cutoff_coords(D0_old)
+          call make_grav_cell(grav_cell,D0_old)
           call destroy(mba)
           return
        end if
 
        if (do_smallscale) then
           ! first compute cutoff coordinates using initial density profile
-          call compute_cutoff_coords(rho0_old)
-          ! set rho0_old = rhoh0_old = ZERO
-          rho0_old  = ZERO
-          rhoh0_old = ZERO
+          call compute_cutoff_coords(D0_old)
+          ! set D0_old = Dh0_old = ZERO
+          D0_old  = ZERO
+          Dh0_old = ZERO
        else
           ! set rho0 to be the average
-          call average(mla,sold,rho0_old,dx,rho_comp)
-          call compute_cutoff_coords(rho0_old)
+          call average(mla,sold,D0_old,dx,rho_comp)
+          call compute_cutoff_coords(D0_old)
 
           ! compute p0 with HSE
-          call make_grav_cell(grav_cell,rho0_old)
-          call enforce_HSE(rho0_old,p0_old,grav_cell)
+          call make_grav_cell(grav_cell,D0_old)
+          call enforce_HSE(D0_old,p0_old,grav_cell)
 
           ! call eos with r,p as input to recompute T,h
           call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
           ! set rhoh0 to be the average
-          call average(mla,sold,rhoh0_old,dx,rhoh_comp)
+          call average(mla,sold,Dh0_old,dx,rhoh_comp)
        end if
 
        ! set tempbar to be the average
@@ -401,13 +401,13 @@ contains
 
        ! note: still need to load/store tempbar
        call read_base_state(restart, check_file_name, &
-            rho0_old, rhoh0_old, p0_old, gamma1bar, w0, &
+            D0_old, Dh0_old, p0_old, gamma1bar, w0, &
             etarho_ec, etarho_cc, div_coeff_old, psi, tempbar, tempbar_init)
 
        if (do_smallscale) then
-          call average(mla,sold,rho0_old,dx,rho_comp)
-          call compute_cutoff_coords(rho0_old)
-          rho0_old = ZERO
+          call average(mla,sold,D0_old,dx,rho_comp)
+          call compute_cutoff_coords(D0_old)
+          D0_old = ZERO
        endif
 
        ! read in any auxillary data
@@ -487,7 +487,7 @@ contains
 
           call regrid(restart,mla,uold,sold,gpi,pi,dSdt,Source_old, &
                       dx,the_bc_tower, &
-                      rho0_old,rhoh0_old,.true.,tpert_mf)
+                      D0_old,Dh0_old,.true.,tpert_mf)
 
           do n = 1,nlevs
              call destroy(tpert_mf(n))
@@ -497,7 +497,7 @@ contains
        else
           call regrid(restart,mla,uold,sold,gpi,pi,dSdt,Source_old, &
                       dx,the_bc_tower, &
-                      rho0_old,rhoh0_old,.true.,rho_Hnuc2)
+                      D0_old,Dh0_old,.true.,rho_Hnuc2)
        endif
 
        ! nlevs is local so we need to reset it
@@ -579,14 +579,14 @@ contains
        p0_temp = p0_old(1,nr_fine_old-1)
 
        ! deallocate 1D arrays
-       deallocate(div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold,s0_init,rho0_old)
-       deallocate(rhoh0_old,rho0_new,rhoh0_new,p0_init,p0_old,p0_new,w0,etarho_ec)
+       deallocate(div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold,s0_init,D0_old)
+       deallocate(Dh0_old,D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,etarho_ec)
        deallocate(etarho_cc,psi,tempbar,tempbar_init,grav_cell)
 
        ! reallocate 1D arrays
        call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar, &
-                                 gamma1bar_hold,s0_init,rho0_old,rhoh0_old,rho0_new, &
-                                 rhoh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc, &
+                                 gamma1bar_hold,s0_init,D0_old,Dh0_old,D0_new, &
+                                 Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                  psi,tempbar,tempbar_init,grav_cell)
 
        ! copy outer pressure for reference
@@ -636,14 +636,14 @@ contains
        etarho_ec(1,nr_fine) = etarho_cc(1,nr_fine-1)
 
        ! compute rho0 by calling average
-       call average(mla,sold,rho0_old,dx,rho_comp)
-       call compute_cutoff_coords(rho0_old)
+       call average(mla,sold,D0_old,dx,rho_comp)
+       call compute_cutoff_coords(D0_old)
 
        ! compute gravity
-       call make_grav_cell(grav_cell,rho0_old)
+       call make_grav_cell(grav_cell,D0_old)
 
        ! compute p0 by HSE
-       call enforce_HSE(rho0_old,p0_old,grav_cell)
+       call enforce_HSE(D0_old,p0_old,grav_cell)
 
        ! compute temperature with EOS
        if (use_tfromp) then
@@ -678,12 +678,12 @@ contains
        deallocate(gamma1)
 
        ! compute div_coeff_old
-       call make_div_coeff(div_coeff_old,rho0_old,p0_old,gamma1bar,grav_cell)
+       call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,grav_cell)
 
        ! recompute time step
        dt = 1.d20
        !call estdt(mla,the_bc_tower,uold,sold,gpi,Source_old,dSdt, &
-        !          w0,rho0_old,Dh0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt,u0,chrls,gam)
+        !          w0,D0_old,Dh0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt,u0,chrls,gam)
 
     end if ! end spherical restart_into_finer initialization
 
@@ -700,9 +700,9 @@ contains
                                          thermal2, &
                                          alpha, beta, gam, u0, &
                                          the_bc_tower,div_coeff_old,div_coeff_new, &
-                                         gamma1bar,gamma1bar_hold,s0_init,rho0_old, &
-                                         rhoh0_old,rho0_new,rhoh0_new,p0_init, &
-                                         p0_old,p0_new,w0,etarho_ec,etarho_cc, &
+                                         gamma1bar,gamma1bar_hold,s0_init,D0_old, &
+                                         Dh0_old,D0_new,Dh0_new,p0_init, &
+                                         p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                          psi,tempbar,tempbar_init,grav_cell,chrls)
 
     use box_util_module
@@ -729,9 +729,9 @@ contains
     type(multifab), pointer       :: alpha(:), beta(:), gam(:), u0(:), W(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
-    real(dp_t)    , pointer       :: rhoh0_old(:,:),rho0_new(:,:),rhoh0_new(:,:),p0_init(:,:)
-    real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),etarho_ec(:,:)
+    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
+    real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
     real(dp_t)    , pointer       :: chrls(:,:,:,:,:,:,:)
 
@@ -870,8 +870,8 @@ contains
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
-                              s0_init,rho0_old,rhoh0_old,rho0_new,rhoh0_new,p0_init, &
-                              p0_old,p0_new,w0,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
+                              s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
+                              p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
                               grav_cell)
 
     ! now that we have dr and nr we can fill initial state
@@ -890,39 +890,42 @@ contains
     call calcu0(alpha, beta, gam, uold, u0, mla)
 
     p0_old       = p0_init
-    rho0_old     = s0_init(:,:,rho_comp)
-    rhoh0_old    = s0_init(:,:,rhoh_comp)
+    D0_old     = s0_init(:,:,rho_comp)
+    Dh0_old    = s0_init(:,:,rhoh_comp)
     tempbar      = s0_init(:,:,temp_comp)
     tempbar_init = s0_init(:,:,temp_comp)
 
     if (fix_base_state) then
-       call compute_cutoff_coords(rho0_old)
-       call make_grav_cell(grav_cell,rho0_old)
+       call compute_cutoff_coords(D0_old)
+       call make_grav_cell(grav_cell,D0_old)
        call destroy(mba)
        return
     end if
 
     if (do_smallscale) then
        ! first compute cutoff coordinates using initial density profile
-       call compute_cutoff_coords(rho0_old)
-       ! set rho0_old = rhoh0_old = ZERO
-       rho0_old  = ZERO
-       rhoh0_old = ZERO
+       call compute_cutoff_coords(D0_old)
+       ! set D0_old = Dh0_old = ZERO
+       D0_old  = ZERO
+       Dh0_old = ZERO
     else
        ! set rho0 to be the average
-       call average(mla,sold,rho0_old,dx,rho_comp)
-       call compute_cutoff_coords(rho0_old)
+       call average(mla,sold,D0_old,dx,rho_comp)
+       call compute_cutoff_coords(D0_old)
 
        ! compute p0 with HSE
-       !call make_grav_cell(grav_cell,rho0_old)
+       !call make_grav_cell(grav_cell,D0_old)
 
-       call enforce_TOV(rho0_old,p0_old,u0)
+       call enforce_TOV(D0_old,p0_old,u0)
+
+       ! set u0_1d to be average
+       call average(mla,u0,u0_1d,dx,1)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
        ! set rhoh0 to be the average
-       call average(mla,sold,rhoh0_old,dx,rhoh_comp)
+       call average(mla,sold,Dh0_old,dx,rhoh_comp)
     end if
 
     ! set tempbar to be the average
@@ -940,9 +943,9 @@ contains
                                             rho_omegadot2,rho_Hnuc2,rho_Hext, &
                                             thermal2, &
                                             the_bc_tower,div_coeff_old,div_coeff_new, &
-                                            gamma1bar,gamma1bar_hold,s0_init,rho0_old, &
-                                            rhoh0_old,rho0_new,rhoh0_new,p0_init, &
-                                            p0_old,p0_new,w0,etarho_ec,etarho_cc, &
+                                            gamma1bar,gamma1bar_hold,s0_init,D0_old, &
+                                            Dh0_old,D0_new,Dh0_new,p0_init, &
+                                            p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                             psi,tempbar,tempbar_init,grav_cell)
 
     use probin_module, only: n_cellx, n_celly, n_cellz, &
@@ -971,9 +974,9 @@ contains
     type(multifab), pointer       :: rho_omegadot2(:),rho_Hnuc2(:),rho_Hext(:),thermal2(:)
     type(bc_tower), intent(  out) :: the_bc_tower
     real(dp_t)    , pointer       :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
-    real(dp_t)    , pointer       :: rhoh0_old(:,:),rho0_new(:,:),rhoh0_new(:,:),p0_init(:,:)
-    real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),etarho_ec(:,:)
+    real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
+    real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
     real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
 
     ! local
@@ -1072,8 +1075,8 @@ contains
 
     ! now that we have nr_fine we can allocate 1d arrays
     call initialize_1d_arrays(max_levs,div_coeff_old,div_coeff_new,gamma1bar, &
-                              gamma1bar_hold,s0_init,rho0_old,rhoh0_old,rho0_new, &
-                              rhoh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc, &
+                              gamma1bar_hold,s0_init,D0_old,Dh0_old,D0_new, &
+                              Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                               psi,tempbar,tempbar_init,grav_cell)
 
     ! now that we have dr and nr we can fill initial state
@@ -1331,38 +1334,38 @@ contains
     call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
     p0_old       = p0_init
-    rho0_old     = s0_init(:,:,rho_comp)
-    rhoh0_old    = s0_init(:,:,rhoh_comp)
+    D0_old     = s0_init(:,:,rho_comp)
+    Dh0_old    = s0_init(:,:,rhoh_comp)
     tempbar      = s0_init(:,:,temp_comp)
     tempbar_init = s0_init(:,:,temp_comp)
 
     if (fix_base_state) then
-       call compute_cutoff_coords(rho0_old)
-       call make_grav_cell(grav_cell,rho0_old)
+       call compute_cutoff_coords(D0_old)
+       call make_grav_cell(grav_cell,D0_old)
        call destroy(mba)
        return
     end if
 
     if (do_smallscale) then
        ! first compute cutoff coordinates using initial density profile
-       call compute_cutoff_coords(rho0_old)
-       ! set rho0_old = rhoh0_old = ZERO
-       rho0_old  = ZERO
-       rhoh0_old = ZERO
+       call compute_cutoff_coords(D0_old)
+       ! set D0_old = Dh0_old = ZERO
+       D0_old  = ZERO
+       Dh0_old = ZERO
     else
        ! set rho0 to be the average
-       call average(mla,sold,rho0_old,dx,rho_comp)
-       call compute_cutoff_coords(rho0_old)
+       call average(mla,sold,D0_old,dx,rho_comp)
+       call compute_cutoff_coords(D0_old)
 
        ! compute p0 with HSE
-       call make_grav_cell(grav_cell,rho0_old)
-       call enforce_HSE(rho0_old,p0_old,grav_cell)
+       call make_grav_cell(grav_cell,D0_old)
+       call enforce_HSE(D0_old,p0_old,grav_cell)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
        ! set rhoh0 to be the average
-       call average(mla,sold,rhoh0_old,dx,rhoh_comp)
+       call average(mla,sold,Dh0_old,dx,rhoh_comp)
     end if
 
     ! set tempbar to be the average
@@ -1375,15 +1378,15 @@ contains
 
 
   subroutine initialize_1d_arrays(num_levs,div_coeff_old,div_coeff_new,gamma1bar, &
-                                  gamma1bar_hold,s0_init,rho0_old,rhoh0_old,rho0_new, &
-                                  rhoh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc, &
+                                  gamma1bar_hold,s0_init,D0_old,Dh0_old,D0_new, &
+                                  Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
                                   psi,tempbar,tempbar_init,grav_cell)
 
     integer    , intent(in) :: num_levs
     real(dp_t) , pointer    :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
-    real(dp_t) , pointer    :: gamma1bar_hold(:,:),s0_init(:,:,:),rho0_old(:,:)
-    real(dp_t) , pointer    :: rhoh0_old(:,:),rho0_new(:,:),rhoh0_new(:,:),p0_init(:,:)
-    real(dp_t) , pointer    :: p0_old(:,:),p0_new(:,:),w0(:,:),etarho_ec(:,:),etarho_cc(:,:)
+    real(dp_t) , pointer    :: gamma1bar_hold(:,:),s0_init(:,:,:),D0_old(:,:)
+    real(dp_t) , pointer    :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
+    real(dp_t) , pointer    :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:),etarho_cc(:,:)
     real(dp_t) , pointer    :: psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
 
     if (spherical .eq. 0) then
@@ -1392,14 +1395,15 @@ contains
        allocate(gamma1bar     (num_levs,0:nr_fine-1))
        allocate(gamma1bar_hold(num_levs,0:nr_fine-1))
        allocate(s0_init       (num_levs,0:nr_fine-1,nscal))
-       allocate(rho0_old      (num_levs,0:nr_fine-1))
-       allocate(rhoh0_old     (num_levs,0:nr_fine-1))
-       allocate(rho0_new      (num_levs,0:nr_fine-1))
-       allocate(rhoh0_new     (num_levs,0:nr_fine-1))
+       allocate(D0_old      (num_levs,0:nr_fine-1))
+       allocate(Dh0_old     (num_levs,0:nr_fine-1))
+       allocate(D0_new      (num_levs,0:nr_fine-1))
+       allocate(Dh0_new     (num_levs,0:nr_fine-1))
        allocate(p0_init       (num_levs,0:nr_fine-1))
        allocate(p0_old        (num_levs,0:nr_fine-1))
        allocate(p0_new        (num_levs,0:nr_fine-1))
        allocate(w0            (num_levs,0:nr_fine))
+       allocate(u0_1d            (num_levs,0:nr_fine))
        allocate(etarho_ec     (num_levs,0:nr_fine))
        allocate(etarho_cc     (num_levs,0:nr_fine-1))
        allocate(psi           (num_levs,0:nr_fine-1))
@@ -1412,14 +1416,15 @@ contains
        allocate(gamma1bar     (1,0:nr_fine-1))
        allocate(gamma1bar_hold(1,0:nr_fine-1))
        allocate(s0_init       (1,0:nr_fine-1,nscal))
-       allocate(rho0_old      (1,0:nr_fine-1))
-       allocate(rhoh0_old     (1,0:nr_fine-1))
-       allocate(rho0_new      (1,0:nr_fine-1))
-       allocate(rhoh0_new     (1,0:nr_fine-1))
+       allocate(D0_old      (1,0:nr_fine-1))
+       allocate(Dh0_old     (1,0:nr_fine-1))
+       allocate(D0_new      (1,0:nr_fine-1))
+       allocate(Dh0_new     (1,0:nr_fine-1))
        allocate(p0_init       (1,0:nr_fine-1))
        allocate(p0_old        (1,0:nr_fine-1))
        allocate(p0_new        (1,0:nr_fine-1))
        allocate(w0            (1,0:nr_fine))
+       allocate(u0_1d            (1,0:nr_fine))
        allocate(etarho_ec     (1,0:nr_fine))
        allocate(etarho_cc     (1,0:nr_fine-1))
        allocate(psi           (1,0:nr_fine-1))
@@ -1433,14 +1438,15 @@ contains
     gamma1bar = ZERO
     gamma1bar_hold = ZERO
     s0_init = ZERO
-    rho0_old = ZERO
-    rhoh0_old = ZERO
-    rho0_new = ZERO
-    rhoh0_new = ZERO
+    D0_old = ZERO
+    Dh0_old = ZERO
+    D0_new = ZERO
+    Dh0_new = ZERO
     p0_init = ZERO
     p0_old = ZERO
     p0_new = ZERO
     w0 = ZERO
+    u0_1d = ZERO
     etarho_ec = ZERO
     etarho_cc = ZERO
     psi = ZERO

@@ -114,6 +114,7 @@ subroutine varden()
   real(dp_t), pointer :: p0_old(:,:)
   real(dp_t), pointer :: p0_new(:,:)
   real(dp_t), pointer :: w0(:,:)
+  real(dp_t), pointer :: u0_1d(:,:)
   real(dp_t), pointer :: etarho_ec(:,:)
   real(dp_t), pointer :: etarho_cc(:,:)
   real(dp_t), pointer :: psi(:,:)
@@ -200,7 +201,7 @@ subroutine varden()
                   rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,the_bc_tower, &
                   div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
                   s0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
-                  p0_old,p0_new,w0,etarho_ec,etarho_cc,psi, &
+                  p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi, &
                   tempbar,tempbar_init,grav_cell)
 
      check_file_name = make_filename(check_base_name, restart)
@@ -221,7 +222,7 @@ subroutine varden()
                   the_bc_tower, &
                   div_coeff_old,div_coeff_new,gamma1bar, &
                   gamma1bar_hold,s0_init,D0_old,Dh0_old, &
-                  D0_new,Dh0_new,p0_init,p0_old,p0_new,w0, &
+                  D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d, &
                   etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell,chrls)
 
   else
@@ -234,7 +235,7 @@ subroutine varden()
                      the_bc_tower, &
                      div_coeff_old,div_coeff_new,gamma1bar, &
                      gamma1bar_hold,s0_init,D0_old,Dh0_old, &
-                     D0_new,Dh0_new,p0_init,p0_old,p0_new,w0, &
+                     D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d, &
                      etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell)
 
   end if
@@ -417,7 +418,7 @@ subroutine varden()
         call destroy(gamma1(n))
      end do
 
-     call make_div_coeff(div_coeff_old,D0_old,p0_old,gamma1bar,grav_cell)
+     call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,grav_cell)
 
      if(do_initial_projection) then
         call initial_proj(uold,sold,pi,gpi,Source_old,normal,hgrhs,thermal2, &
@@ -492,7 +493,7 @@ subroutine varden()
            call make_plotfile(plt(ip),plot_file_name,mla,uold,sold,pi,gpi,rho_omegadot2, &
                               rho_Hnuc2,rho_Hext, &
                               thermal2,Source_old,sponge,mla%mba,dx, &
-                              the_bc_tower,w0,D0_old,Dh0_old,p0_old, &
+                              the_bc_tower,w0,u0_1d,D0_old,Dh0_old,p0_old, &
                               tempbar,gamma1bar,etarho_cc, &
                               normal,dt,particles,write_pf_time)
 
@@ -560,7 +561,7 @@ subroutine varden()
            call advance_timestep_gr(init_mode,mla,uold,sold,unew,snew,gpi,pi, &
                      normal, &
                      D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
-                     tempbar,gamma1bar,w0,rho_omegadot2,rho_Hnuc2, &
+                     tempbar,gamma1bar,w0,u0_1d,rho_omegadot2,rho_Hnuc2, &
                      rho_Hext,thermal2, &
                      div_coeff_old,div_coeff_new,grav_cell,dx,dt,dtold, &
                      the_bc_tower,dSdt,Source_old,Source_new,etarho_ec, &
@@ -651,7 +652,7 @@ subroutine varden()
            call make_plotfile(plt(ip),plot_file_name,mla,uold,sold,pi,gpi,rho_omegadot2, &
                               rho_Hnuc2,rho_Hext, &
                               thermal2,Source_old,sponge,mla%mba,dx, &
-                              the_bc_tower,w0,D0_old,Dh0_old,p0_old, &
+                              the_bc_tower,w0,u0_1d,D0_old,Dh0_old,p0_old, &
                               tempbar,gamma1bar,etarho_cc, &
                               normal,dt,particles,write_pf_time)
 
@@ -1066,7 +1067,7 @@ subroutine varden()
 
 
            ! div_coeff_old needs to be recomputed
-           call make_div_coeff(div_coeff_old,D0_old,p0_old,gamma1bar,grav_cell)
+           call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,grav_cell)
 
 
            ! redistribute the particles to their new processor locations
@@ -1152,7 +1153,7 @@ subroutine varden()
         call advance_timestep_gr(init_mode,mla,uold,sold,unew,snew,gpi,pi, &
             normal,D0_old, &
             Dh0_old,D0_new,Dh0_new,p0_old,p0_new,tempbar,gamma1bar, &
-            w0,rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
+            w0,u0_1d,rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
             div_coeff_old,div_coeff_new, &
             grav_cell,dx,dt,dtold,the_bc_tower,dSdt,Source_old, &
             Source_new,etarho_ec,etarho_cc,psi,sponge,hgrhs,tempbar_init, &
@@ -1351,7 +1352,7 @@ subroutine varden()
                  call make_plotfile(plt(ip),plot_file_name,mla,unew,snew,pi,gpi,rho_omegadot2, &
                                     rho_Hnuc2,rho_Hext, &
                                     thermal2,Source_new,sponge,mla%mba,dx, &
-                                    the_bc_tower,w0,D0_new,Dh0_new,p0_new, &
+                                    the_bc_tower,w0,u0_1d,D0_new,Dh0_new,p0_new, &
                                     tempbar,gamma1bar,etarho_cc, &
                                     normal,dt,particles,write_pf_time)
 
@@ -1442,7 +1443,7 @@ subroutine varden()
            call make_plotfile(plt(ip),plot_file_name,mla,unew,snew,pi,gpi,rho_omegadot2, &
                               rho_Hnuc2,rho_Hext, &
                               thermal2,Source_new,sponge,mla%mba,dx, &
-                              the_bc_tower,w0,D0_new,Dh0_new,p0_new, &
+                              the_bc_tower,w0,u0_1d,D0_new,Dh0_new,p0_new, &
                               tempbar,gamma1bar,etarho_cc, &
                               normal,dt,particles,write_pf_time)
 

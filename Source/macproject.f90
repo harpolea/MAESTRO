@@ -1,15 +1,15 @@
 ! Project the edge-centered (MAC) velocities to satisfy the divergence
 ! constraint.
 !
-! We want to solve:  D [ (beta_0/rho) G phi ] = D ( beta_0 U ) - beta_0 S
+! We want to solve:  D [ (beta_0/Dh u0) G phi ] = D ( beta_0 U ) - beta_0 S
 !
 ! For the use_alt_energy_fix = T case, we instead solve:
-!   D [ (beta_0**2/rho) G (phi/beta_0) ] = D ( beta_0 U ) - beta_0 S
+!   D [ (beta_0**2/D) G (phi/beta_0) ] = D ( beta_0 U ) - beta_0 S
 ! (note the extra beta_0)
 !
 ! Here, phi is cell-centered.
-! 
-! after which we update the velocity as U = U - (1/rho) G phi
+!
+! after which we update the velocity as U = U - (1/D) G phi
 !
 ! basic outline:
 !
@@ -17,13 +17,13 @@
 !
 !   -- compute div ( beta_0 U)
 !
-!   -- store beta_0/rho (or beta_0**2/rho) in the beta multifab 
-!      (mk_mac_coeffs followed by multiply either via mult_edge_by_1d_coeff 
+!   -- store beta_0/D (or beta_0**2/D) in the beta multifab
+!      (mk_mac_coeffs followed by multiply either via mult_edge_by_1d_coeff
 !      or multifab_mult_mult)
 !
 !   -- solve the elliptic equation via multigrid
 !
-!   -- compute beta_0 U = beta_0 U - (beta_0/rho) G phi (mkumac subroutine)
+!   -- compute beta_0 U = beta_0 U - (beta_0/D) G phi (mkumac subroutine)
 !      (note it is beta_0 U that is updated since umac still holds beta_0 U)
 !
 !   -- divide out the beta_0 giving us the new U
@@ -44,11 +44,11 @@ module macproject_module
 
   public :: macproject
 
-contains 
+contains
 
-  ! NOTE: this routine differs from that in varden because phi is passed in/out 
+  ! NOTE: this routine differs from that in varden because phi is passed in/out
   !       rather than allocated here
-  subroutine macproject(mla,umac,phi,rho,dx,the_bc_tower, &
+  subroutine macproject(mla,umac,phi,Dh,u0,dx,the_bc_tower, &
                         divu_rhs,div_coeff_1d,div_coeff_1d_edge,div_coeff_cart_edge)
 
     use mac_hypre_module               , only : mac_hypre
@@ -66,7 +66,8 @@ contains
     type(ml_layout), intent(in   ) :: mla
     type(multifab ), intent(inout) :: umac(:,:)
     type(multifab ), intent(inout) :: phi(:)
-    type(multifab ), intent(in   ) :: rho(:)
+    type(multifab ), intent(in   ) :: Dh(:)
+    type(multifab ), intent(in   ) :: u0(:)
     real(dp_t)     , intent(in   ) :: dx(:,:)
     type(bc_tower ), intent(in   ) :: the_bc_tower
 
@@ -178,10 +179,10 @@ contains
        call divumac(umac,rh,dx,mla%mba%rr,.true.)
     end if
 
-    ! first set beta = 1/rho
-    call mk_mac_coeffs(mla,rho,beta)
+    ! first set beta = 1/Dh u0
+    call mk_mac_coeffs(mla,Dh,u0,beta)
 
-    ! now make beta = beta_0/rho
+    ! now make beta = beta_0/D
     if (use_div_coeff_1d) then
        do n = 1,nlevs
           call mult_edge_by_1d_coeff(beta(n,:),div_coeff_1d(n,:), &
@@ -196,7 +197,7 @@ contains
           do comp=1,dm
              call multifab_mult_mult(beta(n,comp),div_coeff_cart_edge(n,comp))
              if (use_alt_energy_fix) then
-                call multifab_mult_mult(beta(n,comp),div_coeff_cart_edge(n,comp))                
+                call multifab_mult_mult(beta(n,comp),div_coeff_cart_edge(n,comp))
              endif
           end do
        end do
@@ -273,9 +274,9 @@ contains
        end do
 
     end if
-    
+
     ! Print the norm of each component separately -- make sure to do this after we divide
-    !       the velocities by the div_coeff.                                 
+    !       the velocities by the div_coeff.
     if (verbose .eq. 1) then
        do n = 1,nlevs
           umin = multifab_max(umac(n,1))
@@ -341,10 +342,10 @@ contains
       logical        , intent(in   ) :: before
       type(multifab ), intent(in   ), optional :: divu_rhs(:)
 
-      real(kind=dp_t), pointer :: ump(:,:,:,:) 
-      real(kind=dp_t), pointer :: vmp(:,:,:,:) 
-      real(kind=dp_t), pointer :: wmp(:,:,:,:) 
-      real(kind=dp_t), pointer :: rhp(:,:,:,:) 
+      real(kind=dp_t), pointer :: ump(:,:,:,:)
+      real(kind=dp_t), pointer :: vmp(:,:,:,:)
+      real(kind=dp_t), pointer :: wmp(:,:,:,:)
+      real(kind=dp_t), pointer :: rhp(:,:,:,:)
       real(kind=dp_t)          :: rhmax
       integer :: i,lo(get_dim(rh(1))),hi(get_dim(rh(1)))
       integer :: ng_um,ng_rh,dm
@@ -406,8 +407,8 @@ contains
       end do
 
       if (parallel_IOProcessor() .and. verbose .ge. 1) then
-         if (before) then 
-            write(6,1000) 
+         if (before) then
+            write(6,1000)
             write(6,1001) rhmax
          else
             write(6,1002) rhmax
@@ -430,7 +431,7 @@ contains
       integer :: i
 
       do i = lo(1),hi(1)
-         rh(i) = (umac(i+1) - umac(i)) / dx(1) 
+         rh(i) = (umac(i+1) - umac(i)) / dx(1)
       end do
 
     end subroutine divumac_1d
@@ -486,9 +487,9 @@ contains
       real(dp_t)     , intent(in   ) :: div_coeff_edge(0:)
       logical        , intent(in   ) :: do_mult
 
-      real(kind=dp_t), pointer :: ump(:,:,:,:) 
-      real(kind=dp_t), pointer :: vmp(:,:,:,:) 
-      real(kind=dp_t), pointer :: wmp(:,:,:,:) 
+      real(kind=dp_t), pointer :: ump(:,:,:,:)
+      real(kind=dp_t), pointer :: vmp(:,:,:,:)
+      real(kind=dp_t), pointer :: wmp(:,:,:,:)
       integer                  :: lo(get_dim(edge(1)))
       integer                  :: hi(get_dim(edge(1)))
       integer                  :: i,ng_um,dm
@@ -608,43 +609,46 @@ contains
 
     end subroutine mult_edge_by_1d_coeff_3d
 
-    subroutine mk_mac_coeffs(mla,rho,beta)
-
+    subroutine mk_mac_coeffs(mla,Dh,u0,beta)
+      use variables, only : rhoh_comp
       use ml_cc_restriction_module, only: ml_edge_restriction
 
       type(ml_layout), intent(in   ) :: mla
-      type(multifab ), intent(in   ) :: rho(:)
+      type(multifab ), intent(in   ) :: Dh(:)
+      type(multifab ), intent(in   ) :: u0(:)
       type(multifab ), intent(inout) :: beta(:,:)
 
-      real(kind=dp_t), pointer :: bxp(:,:,:,:) 
-      real(kind=dp_t), pointer :: byp(:,:,:,:) 
-      real(kind=dp_t), pointer :: bzp(:,:,:,:) 
-      real(kind=dp_t), pointer :: rp(:,:,:,:) 
+      real(kind=dp_t), pointer :: bxp(:,:,:,:)
+      real(kind=dp_t), pointer :: byp(:,:,:,:)
+      real(kind=dp_t), pointer :: bzp(:,:,:,:)
+      real(kind=dp_t), pointer :: rp(:,:,:,:)
+      real(kind=dp_t), pointer :: u0p(:,:,:,:)
       integer :: i,ng_r,ng_b,lo(mla%dim),hi(mla%dim),dm
 
       dm = mla%dim
-      ng_r = nghost(rho(1))
+      ng_r = nghost(Dh(1))
       ng_b = nghost(beta(1,1))
 
       do n = 1, nlevs
-         do i = 1, nfabs(rho(n))
-            rp => dataptr(rho(n) , i)
+         do i = 1, nfabs(Dh(n))
+            rp => dataptr(Dh(n) , i)
             bxp => dataptr(beta(n,1), i)
-            lo = lwb(get_box(rho(n), i))
-            hi = upb(get_box(rho(n), i))
+            lo = lwb(get_box(Dh(n), i))
+            hi = upb(get_box(Dh(n), i))
+            u0p => dataptr(u0(n) , i)
             select case (dm)
             case (1)
-               call mk_mac_coeffs_1d(bxp(:,1,1,1),ng_b, rp(:,1,1,1), &
-                                     ng_r,lo,hi)
+               call mk_mac_coeffs_1d(bxp(:,1,1,1),ng_b, rp(:,1,1,rhoh_comp), &
+                                     u0p(:,1,1,1), ng_r,lo,hi)
             case (2)
                byp => dataptr(beta(n,2), i)
-               call mk_mac_coeffs_2d(bxp(:,:,1,1),byp(:,:,1,1),ng_b, rp(:,:,1,1), &
-                                     ng_r,lo,hi)
+               call mk_mac_coeffs_2d(bxp(:,:,1,1),byp(:,:,1,1),ng_b, rp(:,:,1,rhoh_comp), &
+                                     u0p(:,:,1,1), ng_r,lo,hi)
             case (3)
                byp => dataptr(beta(n,2), i)
                bzp => dataptr(beta(n,3), i)
                call mk_mac_coeffs_3d(bxp(:,:,:,1),byp(:,:,:,1),bzp(:,:,:,1),&
-                                     ng_b,rp(:,:,:,1),ng_r,lo,hi)
+                                     ng_b,rp(:,:,:,rhoh_comp),u0p(:,:,:,1),ng_r,lo,hi)
             end select
          end do
       end do
@@ -658,50 +662,53 @@ contains
 
     end subroutine mk_mac_coeffs
 
-    subroutine mk_mac_coeffs_1d(betax,ng_b,rho,ng_r,lo,hi)
+    subroutine mk_mac_coeffs_1d(betax,ng_b,Dh,u0,ng_r,lo,hi)
 
       integer :: ng_b,ng_r,lo(:),hi(:)
       real(kind=dp_t), intent(inout) :: betax(lo(1)-ng_b:)
-      real(kind=dp_t), intent(inout) ::   rho(lo(1)-ng_r:)
+      real(kind=dp_t), intent(inout) ::   Dh(lo(1)-ng_r:)
+      real(kind=dp_t), intent(inout) ::   u0(lo(1)-ng_r:)
 
       integer :: i
 
       do i = lo(1),hi(1)+1
-         betax(i) = TWO / (rho(i) + rho(i-1))
+         betax(i) = TWO / (Dh(i)*u0(i) + Dh(i-1)*u0(i-1))
       end do
 
     end subroutine mk_mac_coeffs_1d
 
-    subroutine mk_mac_coeffs_2d(betax,betay,ng_b,rho,ng_r,lo,hi)
+    subroutine mk_mac_coeffs_2d(betax,betay,ng_b,Dh,u0,ng_r,lo,hi)
 
       integer        , intent(in   ) :: ng_b,ng_r,lo(:),hi(:)
       real(kind=dp_t), intent(inout) :: betax(lo(1)-ng_b:,lo(2)-ng_b:)
       real(kind=dp_t), intent(inout) :: betay(lo(1)-ng_b:,lo(2)-ng_b:)
-      real(kind=dp_t), intent(in   ) ::   rho(lo(1)-ng_r:,lo(2)-ng_r:)
+      real(kind=dp_t), intent(in   ) ::   Dh(lo(1)-ng_r:,lo(2)-ng_r:)
+      real(kind=dp_t), intent(in   ) ::   u0(lo(1)-ng_r:,lo(2)-ng_r:)
 
       integer :: i,j
 
       do j = lo(2),hi(2)
          do i = lo(1),hi(1)+1
-            betax(i,j) = TWO / (rho(i,j) + rho(i-1,j))
+            betax(i,j) = TWO / (Dh(i,j)*u0(i,j) + Dh(i-1,j)*u0(i-1,j))
          end do
       end do
 
       do j = lo(2),hi(2)+1
          do i = lo(1),hi(1)
-            betay(i,j) = TWO / (rho(i,j) + rho(i,j-1))
+            betay(i,j) = TWO / (Dh(i,j)*u0(i,j) + Dh(i,j-1)*u0(i,j-1))
          end do
       end do
 
     end subroutine mk_mac_coeffs_2d
 
-    subroutine mk_mac_coeffs_3d(betax,betay,betaz,ng_b,rho,ng_r,lo,hi)
+    subroutine mk_mac_coeffs_3d(betax,betay,betaz,ng_b,Dh,u0,ng_r,lo,hi)
 
       integer        , intent(in   ) :: ng_b,ng_r,lo(:),hi(:)
       real(kind=dp_t), intent(inout) :: betax(lo(1)-ng_b:,lo(2)-ng_b:,lo(3)-ng_b:)
       real(kind=dp_t), intent(inout) :: betay(lo(1)-ng_b:,lo(2)-ng_b:,lo(3)-ng_b:)
       real(kind=dp_t), intent(inout) :: betaz(lo(1)-ng_b:,lo(2)-ng_b:,lo(3)-ng_b:)
-      real(kind=dp_t), intent(in   ) ::   rho(lo(1)-ng_r:,lo(2)-ng_r:,lo(3)-ng_r:)
+      real(kind=dp_t), intent(in   ) ::   Dh(lo(1)-ng_r:,lo(2)-ng_r:,lo(3)-ng_r:)
+      real(kind=dp_t), intent(in   ) ::   u0(lo(1)-ng_r:,lo(2)-ng_r:,lo(3)-ng_r:)
 
       integer :: i,j,k
 
@@ -710,7 +717,8 @@ contains
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)+1
-               betax(i,j,k) = TWO / (rho(i,j,k) + rho(i-1,j,k))
+               betax(i,j,k) = TWO / (Dh(i,j,k)*u0(i,j,k) + &
+                              Dh(i-1,j,k)*u0(i-1,j,k))
             end do
          end do
       end do
@@ -719,7 +727,8 @@ contains
       do k = lo(3),hi(3)
          do j = lo(2),hi(2)+1
             do i = lo(1),hi(1)
-               betay(i,j,k) = TWO / (rho(i,j,k) + rho(i,j-1,k))
+               betay(i,j,k) = TWO / (Dh(i,j,k)*u0(i,j,k) + &
+                              Dh(i,j-1,k)*u0(i,j-1,k))
             end do
          end do
       end do
@@ -728,7 +737,8 @@ contains
       do k = lo(3),hi(3)+1
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
-               betaz(i,j,k) = TWO / (rho(i,j,k) + rho(i,j,k-1))
+               betaz(i,j,k) = TWO / (Dh(i,j,k)*u0(i,j,k) + &
+                              Dh(i,j,k-1)*u0(i,j,k-1))
             end do
          end do
       end do
@@ -752,19 +762,19 @@ contains
       integer :: i,ng_um,ng_p,ng_b,lo(get_dim(phi(1))),hi(get_dim(phi(1))),dm
 
       type(bc_level)           :: bc
-      real(kind=dp_t), pointer :: ump(:,:,:,:) 
-      real(kind=dp_t), pointer :: vmp(:,:,:,:) 
-      real(kind=dp_t), pointer :: wmp(:,:,:,:) 
-      real(kind=dp_t), pointer :: php(:,:,:,:) 
-      real(kind=dp_t), pointer :: bxp(:,:,:,:) 
-      real(kind=dp_t), pointer :: byp(:,:,:,:) 
-      real(kind=dp_t), pointer :: bzp(:,:,:,:) 
-      real(kind=dp_t), pointer :: lxp(:,:,:,:) 
-      real(kind=dp_t), pointer :: hxp(:,:,:,:) 
-      real(kind=dp_t), pointer :: lyp(:,:,:,:) 
-      real(kind=dp_t), pointer :: hyp(:,:,:,:) 
-      real(kind=dp_t), pointer :: lzp(:,:,:,:) 
-      real(kind=dp_t), pointer :: hzp(:,:,:,:) 
+      real(kind=dp_t), pointer :: ump(:,:,:,:)
+      real(kind=dp_t), pointer :: vmp(:,:,:,:)
+      real(kind=dp_t), pointer :: wmp(:,:,:,:)
+      real(kind=dp_t), pointer :: php(:,:,:,:)
+      real(kind=dp_t), pointer :: bxp(:,:,:,:)
+      real(kind=dp_t), pointer :: byp(:,:,:,:)
+      real(kind=dp_t), pointer :: bzp(:,:,:,:)
+      real(kind=dp_t), pointer :: lxp(:,:,:,:)
+      real(kind=dp_t), pointer :: hxp(:,:,:,:)
+      real(kind=dp_t), pointer :: lyp(:,:,:,:)
+      real(kind=dp_t), pointer :: hyp(:,:,:,:)
+      real(kind=dp_t), pointer :: lzp(:,:,:,:)
+      real(kind=dp_t), pointer :: hzp(:,:,:,:)
 
       dm = get_dim(phi(1))
       nlevs = size(phi)
@@ -786,7 +796,7 @@ contains
 
             select case (dm)
             case (1)
-               call mkumac_1d(ump(:,1,1,1), ng_um, & 
+               call mkumac_1d(ump(:,1,1,1), ng_um, &
                               php(:,1,1,1), ng_p, &
                               bxp(:,1,1,1), ng_b, &
                               lxp(:,1,1,1),hxp(:,1,1,1), &
@@ -825,7 +835,7 @@ contains
          enddo
 
       end do
-      
+
       do n = nlevs,2,-1
          do i = 1,mla%dim
             call ml_edge_restriction(umac(n-1,i),umac(n,i),mla%mba%rr(n-1,:),i)
