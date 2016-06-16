@@ -122,7 +122,7 @@ subroutine varden()
   real(dp_t), pointer :: psi(:,:)
   real(dp_t), pointer :: tempbar(:,:)
   real(dp_t), pointer :: tempbar_init(:,:)
-  real(dp_t), pointer :: grav_cell(:,:)
+  real(dp_t), pointer :: dpdr_cell(:,:)
   real(dp_t), pointer :: chrls(:,:,:,:,:,:,:)
 
   real(dp_t), allocatable :: psi_temp(:,:)
@@ -204,7 +204,7 @@ subroutine varden()
                   div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
                   s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                   p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi, &
-                  tempbar,tempbar_init,grav_cell)
+                  tempbar,tempbar_init,dpdr_cell)
 
      check_file_name = make_filename(check_base_name, restart)
 
@@ -225,7 +225,7 @@ subroutine varden()
                   div_coeff_old,div_coeff_new,gamma1bar, &
                   gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old, &
                   D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d, &
-                  etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell,chrls)
+                  etarho_ec,etarho_cc,psi,tempbar,tempbar_init,dpdr_cell,chrls)
 
   else
 
@@ -239,7 +239,7 @@ subroutine varden()
                      div_coeff_old,div_coeff_new,gamma1bar, &
                      gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old, &
                      D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d, &
-                     etarho_ec,etarho_cc,psi,tempbar,tempbar_init,grav_cell,chrls)
+                     etarho_ec,etarho_cc,psi,tempbar,tempbar_init,dpdr_cell,chrls)
 
   end if
 
@@ -369,7 +369,7 @@ subroutine varden()
      end if
   end if
 
-  call make_grav_cell(grav_cell,D0_old)
+  call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
 
 
 
@@ -421,7 +421,7 @@ subroutine varden()
         call destroy(gamma1(n))
      end do
 
-     call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,grav_cell)
+     call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
 
      if(do_initial_projection) then
         call initial_proj(uold,sold,pi,gpi,Source_old,normal,hgrhs,thermal2, &
@@ -433,7 +433,7 @@ subroutine varden()
      !----------------------------------------------------------------------
 
      call firstdt(mla,the_bc_tower%bc_tower_array,uold,gpi,sold,Source_old, &
-                  D0_old,Dh0_old,p0_old,grav_cell,gamma1bar,dx,cflfac,dt,u0,chrls,gam)
+                  D0_old,Dh0_old,p0_old,dpdr_cell,gamma1bar,dx,cflfac,dt,u0,chrls,gam)
 
      if (parallel_IOProcessor() .and. verbose .ge. 1) then
         print*,"Minimum firstdt over all levels =",dt
@@ -471,7 +471,7 @@ subroutine varden()
 
         call divu_iter(istep_divu_iter,uold,sold,pi,gpi,thermal2, &
                        Source_old,normal,hgrhs,dSdt,div_coeff_old,D0_old,Dh0_old,p0_old, &
-                       gamma1bar,tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam)
+                       gamma1bar,tempbar_init,w0,dpdr_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam)
 
      end do
 
@@ -566,7 +566,7 @@ subroutine varden()
                      D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
                      tempbar,gamma1bar,w0,u0_1d,rho_omegadot2,rho_Hnuc2, &
                      rho_Hext,thermal2, &
-                     div_coeff_old,div_coeff_new,grav_cell,dx,dt,dtold, &
+                     div_coeff_old,div_coeff_new,dpdr_cell,dx,dt,dtold, &
                      the_bc_tower,dSdt,Source_old,Source_new,etarho_ec, &
                      etarho_cc,psi,sponge,hgrhs,tempbar_init,particles,&
                      u0,chrls,gam)
@@ -1035,12 +1035,12 @@ subroutine varden()
 
 
            ! recompute p0 based on the new rho0
-           call compute_cutoff_coords(D0_old)
+           call compute_cutoff_coords(Dh0_old)
 
-           call make_grav_cell(grav_cell,D0_old)
+           call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
 
            ! enforce HSE
-           call enforce_HSE(D0_old,p0_old,grav_cell)
+           call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
            if (use_tfromp) then
               ! compute full state T = T(rho,p0,X)
@@ -1070,7 +1070,7 @@ subroutine varden()
 
 
            ! div_coeff_old needs to be recomputed
-           call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,grav_cell)
+           call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
 
 
            ! redistribute the particles to their new processor locations
@@ -1088,7 +1088,7 @@ subroutine varden()
            dt = 1.d20
 
            call estdt(mla,the_bc_tower,uold,sold,gpi,Source_old,dSdt, &
-                      w0,D0_old,Dh0_old,p0_old,gamma1bar,grav_cell,dx,cflfac,dt,u0,chrls,gam)
+                      w0,D0_old,Dh0_old,p0_old,gamma1bar,dpdr_cell,dx,cflfac,dt,u0,chrls,gam)
 
            if (parallel_IOProcessor() .and. verbose .ge. 1) then
               print*,''
@@ -1158,7 +1158,7 @@ subroutine varden()
             Dh0_old,D0_new,Dh0_new,p0_old,p0_new,tempbar,gamma1bar, &
             w0,u0_1d,rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
             div_coeff_old,div_coeff_new, &
-            grav_cell,dx,dt,dtold,the_bc_tower,dSdt,Source_old, &
+            dpdr_cell,dx,dt,dtold,the_bc_tower,dSdt,Source_old, &
             Source_new,etarho_ec,etarho_cc,psi,sponge,hgrhs,tempbar_init, &
             particles,u0,chrls,gam)
 
@@ -1516,6 +1516,6 @@ subroutine varden()
   deallocate(thermal2,dx)
   deallocate(div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold,s0_init,D0_old)
   deallocate(Dh0_old,D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc)
-  deallocate(psi,tempbar,tempbar_init,grav_cell,chrls)
+  deallocate(psi,tempbar,tempbar_init,dpdr_cell,chrls)
 
 end subroutine varden

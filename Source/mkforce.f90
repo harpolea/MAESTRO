@@ -457,7 +457,22 @@ contains
              endif
 
              ! NOTE: using the fact that the gamma 3-metric is diagonal
-             do m = 0, 3
+             ! Do 0 index separately as need time component of velocity, which for conserved variables is just 1
+             m = 0
+             gr_term(1) = gr_term(1) + gam(1,i,j,k) * &
+              (chrls(m,1,1,i,j,k) * (umac(i,j,k) + umac(i+1,j,k)) + &
+               chrls(m,2,1,i,j,k) * (vmac(i,j,k) + vmac(i+1,j,k)) + &
+               chrls(m,3,1,i,j,k) * (wmac(i,j,k) + wmac(i+1,j,k)))
+             gr_term(2) = gr_term(2) + gam(2,i,j,k) * &
+              (chrls(m,1,2,i,j,k) * (umac(i,j,k) + umac(i,j+1,k)) + &
+               chrls(m,2,2,i,j,k) * (vmac(i,j,k) + vmac(i,j+1,k)) + &
+               chrls(m,3,2,i,j,k) * (wmac(i,j,k) + wmac(i,j+1,k)))
+             gr_term(3) = gr_term(3) + gam(3,i,j,k) * &
+              (chrls(m,1,3,i,j,k) * (umac(i,j,k) + umac(i,j,k+1)) + &
+               chrls(m,2,3,i,j,k) * (vmac(i,j,k) + vmac(i,j,k+1)) + &
+               chrls(m,3,3,i,j,k) * (wmac(i,j,k) + wmac(i,j,k+1)))
+
+             do m = 1, 3
                 gr_term(1) = gr_term(1) + gam(1,i,j,k) * uold(i,j,k,m) * &
                  (chrls(m,1,1,i,j,k) * (umac(i,j,k) + umac(i+1,j,k)) + &
                   chrls(m,2,1,i,j,k) * (vmac(i,j,k) + vmac(i+1,j,k)) + &

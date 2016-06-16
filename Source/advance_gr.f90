@@ -32,7 +32,7 @@ contains
                               D0_new,Dh0_new,p0_old,p0_new,tempbar,gamma1bar,w0,u0_1d,&
                               rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2,&
                               div_coeff_old,div_coeff_new, &
-                              grav_cell_old,dx,dt,dtold,the_bc_tower, &
+                              dpdr_cell_old,dx,dt,dtold,the_bc_tower, &
                               dSdt,Source_old,Source_new,etarho_ec,etarho_cc, &
                               psi,sponge,hgrhs,tempbar_init,particles,&
                               u0,chrls,gam)
@@ -52,7 +52,7 @@ contains
     use extraphalf_module           , only : extrap_to_halftime
     use thermal_conduct_module      , only : thermal_conduct
     use make_explicit_thermal_module, only : make_explicit_thermal, make_thermal_coeffs
-    use make_grav_module            , only : make_grav_cell
+    use make_grav_module            , only : make_dpdr_cell
     use make_eta_module             , only : make_etarho_planar, make_etarho_spherical
     use make_psi_module             , only : make_psi_planar, make_psi_spherical
     use fill_3d_module              , only : put_1d_array_on_cart, make_w0mac, make_s0mac
@@ -109,7 +109,7 @@ contains
     type(multifab),  intent(inout) ::  thermal2(:)
     real(dp_t)    ,  intent(inout) :: div_coeff_old(:,0:)
     real(dp_t)    ,  intent(inout) :: div_coeff_new(:,0:)
-    real(dp_t)    ,  intent(inout) :: grav_cell_old(:,0:)
+    real(dp_t)    ,  intent(inout) :: dpdr_cell_old(:,0:)
     real(dp_t)    ,  intent(in   ) :: dx(:,:),dt,dtold
     type(bc_tower),  intent(in   ) :: the_bc_tower
     type(multifab),  intent(inout) ::       dSdt(:)
@@ -164,8 +164,8 @@ contains
     type(multifab) ::               sedge(mla%nlevel,mla%dim)
     type(multifab) ::               sflux(mla%nlevel,mla%dim)
 
-    real(kind=dp_t), allocatable ::        grav_cell_nph(:,:)
-    real(kind=dp_t), allocatable ::        grav_cell_new(:,:)
+    real(kind=dp_t), allocatable ::        dpdr_cell_nph(:,:)
+    real(kind=dp_t), allocatable ::        dpdr_cell_new(:,:)
     real(kind=dp_t), allocatable ::             D0_nph(:,:)
     real(kind=dp_t), allocatable ::               p0_nph(:,:)
     real(kind=dp_t), allocatable ::               Dh0_nph(:,:)
@@ -215,8 +215,8 @@ contains
 
     misc_time_start = parallel_wtime()
 
-    allocate(       grav_cell_nph(nlevs_radial,0:nr_fine-1))
-    allocate(       grav_cell_new(nlevs_radial,0:nr_fine-1))
+    allocate(       dpdr_cell_nph(nlevs_radial,0:nr_fine-1))
+    allocate(       dpdr_cell_new(nlevs_radial,0:nr_fine-1))
     allocate(            D0_nph(nlevs_radial,0:nr_fine-1))
     allocate(              p0_nph(nlevs_radial,0:nr_fine-1))
     allocate(              Dh0_nph(nlevs_radial,0:nr_fine-1))
@@ -426,7 +426,7 @@ contains
     end do
 
     call advance_premac(uold,sold,umac,gpi,normal,w0,w0mac,w0_force,w0_force_cart, &
-                        D0_old,Dh0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
+                        D0_old,Dh0_old,dpdr_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
 
     if (dm .eq. 3) then
        do n=1,nlevs
@@ -588,14 +588,14 @@ contains
 
     ! Correct the base state by "averaging"
     if (use_etarho .and. evolve_base_state) then
-       call average(mla,s2,D0_new,dx,rho_comp)
-       call compute_cutoff_coords(D0_new)
+       call average(mla,s2,Dh0_new,dx,rhoh_comp)
+       call compute_cutoff_coords(Dh0_new)
     end if
 
     if (evolve_base_state) then
-       call make_grav_cell(grav_cell_new,D0_new)
+       call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
     else
-       grav_cell_new = grav_cell_old
+       dpdr_cell_new = dpdr_cell_old
     end if
 
     ! 4E
@@ -606,7 +606,7 @@ contains
        p0_new = p0_old
 
        ! FIXME: need to recalculate u0 at some point
-       call enforce_TOV(D0_new,p0_new,u0_1d)
+       call enforce_TOV(Dh0_new,p0_new,u0_1d)
 
        ! 4F
 
@@ -768,7 +768,7 @@ contains
           call destroy(gamma1(n))
        end do
 
-       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,grav_cell_new)
+       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,dpdr_cell_new)
 
     else
 
@@ -939,7 +939,7 @@ contains
     end do
 
     call advance_premac(uold,sold,umac,gpi,normal,w0,w0mac,w0_force,w0_force_cart, &
-                        D0_old,Dh0_old,grav_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
+                        D0_old,Dh0_old,dpdr_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
 
     if (barrier_timers) call parallel_barrier()
     advect_time = advect_time + parallel_wtime() - advect_time_start
@@ -1090,20 +1090,21 @@ contains
 
     ! Correct the base state using "averaging"
     if (use_etarho .and. evolve_base_state) then
-       call average(mla,s2,D0_new,dx,rho_comp)
-       call compute_cutoff_coords(D0_new)
+       call average(mla,s2,Dh0_new,dx,rhoh_comp)
+       call compute_cutoff_coords(Dh0_new)
     end if
 
     if (evolve_base_state) then
-       call make_grav_cell(grav_cell_new,D0_new)
+       call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
        D0_nph = HALF*(D0_old+D0_new)
        Dh0_nph = HALF*(Dh0_old+Dh0_new)
-       call make_grav_cell(grav_cell_nph,D0_nph)
+       p0_nph = HALF*(p0_old+p0_new)
+       call make_dpdr_cell(dpdr_cell_nph,Dh0_nph,p0_nph,u0_1d)
     else
-       grav_cell_new = grav_cell_old
+       dpdr_cell_new = dpdr_cell_old
        D0_nph = D0_old
        Dh0_nph = HALF*(Dh0_old+Dh0_new)
-       grav_cell_nph = grav_cell_old
+       dpdr_cell_nph = dpdr_cell_old
     end if
 
     ! 8E
@@ -1113,7 +1114,7 @@ contains
        ! set new p0 through HSE
        p0_new = p0_old
        ! FIXME: recalculate u0 at some point
-       call enforce_TOV(D0_new,p0_new,u0_1d)
+       call enforce_TOV(Dh0_new,p0_new,u0_1d)
        p0_nph = HALF*(p0_old+p0_new)
 
        ! 8F
@@ -1285,7 +1286,7 @@ contains
        end do
 
        !  We used to call this even if evolve_base was false,but we don't need to
-       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,grav_cell_new)
+       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,dpdr_cell_new)
 
     end if
 
@@ -1388,7 +1389,7 @@ contains
     call make_at_halftime(Dhalf,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
 
     call velocity_advance(mla,uold,unew,sold,Dhalf,umac,gpi,normal,w0,w0mac,w0_force, &
-                          w0_force_cart,D0_old,Dh0_old,D0_nph,Dh0_nph,grav_cell_old,grav_cell_nph, &
+                          w0_force_cart,D0_old,Dh0_old,D0_nph,Dh0_nph,dpdr_cell_old,dpdr_cell_nph, &
                           dx,dt,the_bc_tower%bc_tower_array,sponge, &
                           u0,chrls,gam)
 
@@ -1535,7 +1536,7 @@ contains
 
     if (.not. init_mode) then
 
-       grav_cell_old = grav_cell_new
+       dpdr_cell_old = dpdr_cell_new
 
        if (.not. fix_base_state) then
           ! compute tempbar by "averaging"

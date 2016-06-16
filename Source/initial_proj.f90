@@ -113,7 +113,7 @@ contains
           call setval(thermal(n), ZERO, all=.true.)
        end do
     end if
-    
+
     do n=1,nlevs
        call multifab_build(delta_gamma1_term(n), mla%la(n), 1,     1)
        call multifab_build(delta_gamma1(n),      mla%la(n), 1,     1)
@@ -121,7 +121,7 @@ contains
        call multifab_build(rho_Hnuc1(n),         mla%la(n), 1,     0)
        call multifab_build(rho_Hext(n),          mla%la(n), 1,     0)
        ! we don't have a legit timestep yet, so we set rho_omegadot1, rho_Hnuc1,
-       ! and rho_Hext to 0 
+       ! and rho_Hext to 0
        call setval(     rho_omegadot1(n), ZERO, all=.true.)
        call setval(         rho_Hnuc1(n), ZERO, all=.true.)
        call setval(          rho_Hext(n), ZERO, all=.true.)
@@ -142,11 +142,11 @@ contains
        call destroy(rho_Hext(n))
        call destroy(delta_gamma1(n))
     end do
-    
+
     if (evolve_base_state) then
        call average(mla,Source_old,Sbar,dx,1)
     end if
-    
+
     ! Note that we use rhohalf, filled with 1 at this point, as a temporary
     ! in order to do a constant-density initial projection.
 
@@ -154,7 +154,7 @@ contains
        call multifab_build(rhohalf(n), mla%la(n), 1, 1)
        call setval(rhohalf(n),ONE,1,1,all=.true.)
     end do
-    
+
     call make_hgrhs(the_bc_tower,mla,hgrhs,Source_old,delta_gamma1_term,Sbar, &
                     div_coeff_old,dx)
 
@@ -165,11 +165,13 @@ contains
     ! dt doesn't matter for the initial projection since we're throwing
     ! away the pi and gpi anyway
     dt_temp = ONE
-    
+
     do n=1,nlevs
        call multifab_build(div_coeff_3d(n), mla%la(n), 1, 1)
     end do
-    
+
+    print *, 'div_coeff_old', div_coeff_old
+
     call put_1d_array_on_cart(div_coeff_old,div_coeff_3d,foextrap_comp,.false., &
                               .false.,dx,the_bc_tower%bc_tower_array,mla)
 
@@ -181,7 +183,7 @@ contains
 
     call hgproject(initial_projection_comp,mla,uold,uold,rhohalf,pi,gpi,dx, &
                    dt_temp,the_bc_tower,div_coeff_3d,hgrhs,eps_init)
-    
+
     do n=1,nlevs
        call destroy(div_coeff_3d(n))
        call destroy(rhohalf(n))
@@ -191,7 +193,7 @@ contains
        call setval( pi(n), 0.0_dp_t, all=.true.)
        call setval(gpi(n), 0.0_dp_t, all=.true.)
     end do
-    
+
   end subroutine initial_proj
 
 end module initial_proj_module

@@ -15,7 +15,7 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine make_div_coeff(div_coeff,Dh0,u0,p0,gamma1bar,grav_center)
+  subroutine make_div_coeff(div_coeff,Dh0,u0,p0,gamma1bar,dpdr_centre)
 
     use bl_constants_module
     use geometry, only: nr_fine, dr, anelastic_cutoff_coord, r_start_coord, r_end_coord, &
@@ -26,7 +26,7 @@ contains
     real(kind=dp_t), intent(  out) :: div_coeff(:,0:)
     real(kind=dp_t), intent(in   ) :: Dh0(:,0:), u0(:,0:)
     real(kind=dp_t), intent(in   ) :: p0(:,0:), gamma1bar(:,0:)
-    real(kind=dp_t), intent(in   ) :: grav_center(:,0:)
+    real(kind=dp_t), intent(in   ) :: dpdr_centre(:,0:)
 
     ! local
     integer :: r, n, i, refrat, j
@@ -62,6 +62,7 @@ contains
        ! call restrict_base and fill_ghost_base
        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+       print *, 'dpdr_centre', dpdr_centre
        do n=1,nlevs_radial
 
           do j=1,numdisjointchunks(n)
@@ -123,7 +124,9 @@ contains
                         (p0(n,r) - HALF*nu*dr(n))) .le. ZERO) then
 
                       ! just do piecewise constant integration
-                      integral = abs(grav_center(n,r))*Dh0(n,r)*u0(n,r)*dr(n)/(p0(n,r)*gamma1bar(n,r))
+                      !integral = !abs(grav_center(n,r))*Dh0(n,r)*u0(n,r)*dr(n)/(p0(n,r)*gamma1bar(n,r))
+                      integral = abs(dpdr_centre(n,r))*dr(n)/(p0(n,r)*gamma1bar(n,r))
+                      print *, 'integral', integral
 
                    else
 
@@ -131,9 +134,9 @@ contains
 
                          ! also do piecewise linear reconstruction of
                          ! gravity -- not documented in publication yet.
-                         del   = HALF* (grav_center(n,r+1) - grav_center(n,r-1))/dr(n)
-                         dpls  = TWO * (grav_center(n,r+1) - grav_center(n,r  ))/dr(n)
-                         dmin  = TWO * (grav_center(n,r  ) - grav_center(n,r-1))/dr(n)
+                         del   = HALF* (dpdr_centre(n,r+1) - dpdr_centre(n,r-1))/dr(n)
+                         dpls  = TWO * (dpdr_centre(n,r+1) - dpdr_centre(n,r  ))/dr(n)
+                         dmin  = TWO * (dpdr_centre(n,r  ) - dpdr_centre(n,r-1))/dr(n)
                          slim  = min(abs(dpls), abs(dmin))
                          slim  = merge(slim, zero, dpls*dmin.gt.ZERO)
                          sflag = sign(ONE,del)
@@ -141,10 +144,10 @@ contains
 
                          denom = nu*gamma1bar(n,r) - mu*p0(n,r)
                          coeff1 = (lambda*gamma1bar(n,r) - mu*Dh0(n,r)*u0(n,r)) * &
-                              (kappa *gamma1bar(n,r) + mu*abs(grav_center(n,r))) / &
+                              (kappa *gamma1bar(n,r) + mu*abs(dpdr_centre(n,r))) / &
                               (mu*mu*denom)
                          coeff2 = (lambda*p0(n,r) - nu*Dh0(n,r)*u0(n,r))* &
-                              (-kappa*p0(n,r) - nu*abs(grav_center(n,r))) / &
+                              (-kappa*p0(n,r) - nu*abs(dpdr_centre(n,r))) / &
                               (nu*nu*denom)
                          coeff3 = kappa*lambda / (mu*nu)
 
@@ -162,7 +165,7 @@ contains
                          coeff1 = lambda*gamma1bar(n,r)/mu - Dh0(n,r)*u0(n,r)
                          coeff2 = lambda*p0(n,r)/nu - Dh0(n,r)*u0(n,r)
 
-                         integral = (abs(grav_center(n,r))/denom)* &
+                         integral = (abs(dpdr_centre(n,r))/denom)* &
                               (coeff1*log( (gamma1bar(n,r) + HALF*mu*dr(n))/ &
                                            (gamma1bar(n,r) - HALF*mu*dr(n))) - &
                                coeff2*log( (p0(n,r) + HALF*nu*dr(n))/ &
@@ -274,6 +277,12 @@ contains
 
     call restrict_base(div_coeff,.true.)
     call fill_ghost_base(div_coeff,.true.)
+
+    print *, 'div_coeff', div_coeff(:,:)
+    print *, 'u0', u0(:,:)
+    print *, 'p0', p0(:,:)
+    print *, 'Dh0', Dh0(:,:)
+    print *, 'beta0_edge', beta0_edge(:,:)
 
   end subroutine make_div_coeff
 

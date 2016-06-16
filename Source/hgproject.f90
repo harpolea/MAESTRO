@@ -27,7 +27,7 @@ module hgproject_module
   private
   public :: hgproject
 
-contains 
+contains
 
   subroutine hgproject(proj_type,mla,unew,uold,rhohalf,pi,gpi,dx,dt,the_bc_tower, &
                        div_coeff_3d,divu_rhs,eps_in)
@@ -58,10 +58,13 @@ contains
     type(multifab ), intent(inout), optional :: divu_rhs(:)
     real(dp_t)     , intent(in   ), optional :: eps_in
 
-    ! Local  
+    ! Local
     type(multifab) :: phi(mla%nlevel)
     type(multifab) :: gphi(mla%nlevel)
     type(multifab) ::   rh(mla%nlevel)
+
+    !!!!!! TESTING
+    real(kind=dp_t), pointer ::  testp(:,:,:,:)
 
     integer                   :: n,d,stencil_type,dm,nlevs
     logical                   :: using_alt_energy_fix
@@ -142,6 +145,12 @@ contains
           call multifab_mult_mult_c(unew(n),d,div_coeff_3d(n),1,1,nghost(div_coeff_3d(n)))
        end do
 
+       !!!!!!!! FIXME: GET RID OF ME
+       do d = 1, nfabs(div_coeff_3d(n))
+           testp => dataptr(div_coeff_3d(n), d)
+           !print *, testp
+       enddo
+
        ! rhohalf = rho/beta_0
        call multifab_div_div_c(rhohalf(n),1,div_coeff_3d(n),1,1, &
                                nghost(div_coeff_3d(n)))
@@ -162,7 +171,7 @@ contains
 
 !   if (dm .eq. 1) then
 !      call hg_1d_solver(mla,unew,rhohalf,phi,dx,the_bc_tower,stencil_type,divu_rhs)
-!   else 
+!   else
 
     if (present(eps_in)) then
        rel_solver_eps = eps_in
@@ -172,7 +181,7 @@ contains
 
     abs_solver_eps = -1.d0
 
-    if (use_hypre) then 
+    if (use_hypre) then
        if (present(divu_rhs)) then
           call hg_hypre(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
                         stencil_type,rel_solver_eps,abs_solver_eps, divu_rhs)
@@ -187,7 +196,7 @@ contains
        else
           call hg_multigrid(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
                             stencil_type,rel_solver_eps,abs_solver_eps)
-                            
+
        end if
     endif
 
@@ -277,21 +286,21 @@ contains
       real(kind=dp_t), intent(in   ) :: dt
       type(bc_tower) , intent(in   ) :: the_bc_tower
       integer        , intent(in   ) :: proj_type
-  
+
       type(bc_level) :: bc
-  
+
       real(kind=dp_t), pointer :: unp(:,:,:,:)
-      real(kind=dp_t), pointer :: uop(:,:,:,:) 
-      real(kind=dp_t), pointer :: gpp(:,:,:,:) 
+      real(kind=dp_t), pointer :: uop(:,:,:,:)
+      real(kind=dp_t), pointer :: gpp(:,:,:,:)
       real(kind=dp_t), pointer ::  rp(:,:,:,:)
-  
+
       integer :: lo(unew(1)%dim),hi(unew(1)%dim)
       integer :: i,n,ng_un,ng_uo,ng_rh,ng_gp
 
       type(bl_prof_timer), save :: bpt
 
       call build(bpt, "create_uvec_for_projection")
-  
+
       ng_un = nghost(unew(1))
       ng_uo = nghost(uold(1))
       ng_rh = nghost(rhohalf(1))
@@ -302,8 +311,8 @@ contains
          do i = 1, nfabs(unew(n))
             lo  =  lwb(get_box(unew(n) , i))
             hi  =  upb(get_box(unew(n) , i))
-            unp => dataptr(unew(n)     , i) 
-            uop => dataptr(uold(n)     , i) 
+            unp => dataptr(unew(n)     , i)
+            uop => dataptr(uold(n)     , i)
             gpp => dataptr(gpi(n)      , i)
              rp => dataptr(  rhohalf(n), i)
             select case (dm)
@@ -321,7 +330,7 @@ contains
                                      lo,hi,dt, bc%phys_bc_level_array(i,:,:), proj_type)
             end select
          end do
-      end do 
+      end do
 
       call destroy(bpt)
 
@@ -406,7 +415,7 @@ contains
          unew(lo(1)-1:hi(1)+1,lo(2)-1:hi(2)+1,2) = ( &
              unew(lo(1)-1:hi(1)+1,lo(2)-1:hi(2)+1,2) &
              - uold(lo(1)-1:hi(1)+1,lo(2)-1:hi(2)+1,2) ) / dt
-     
+
       ! quantity projected is Ustar + dt * (1/rho) gpi
       else if (proj_type .eq. regular_timestep_comp) then
 
@@ -416,7 +425,7 @@ contains
             dt*gpi(lo(1):hi(1),lo(2):hi(2),2)/rhohalf(lo(1):hi(1),lo(2):hi(2))
 
        else
-     
+
           call bl_error('No proj_type by this number ')
 
       end if
@@ -524,9 +533,9 @@ contains
       integer :: lo(phi(1)%dim),hi(phi(1)%dim)
       integer :: i,n,ng_p,ng_gp
 
-      real(kind=dp_t), pointer :: gph(:,:,:,:) 
-      real(kind=dp_t), pointer :: pp(:,:,:,:) 
-      real(kind=dp_t), pointer :: bp(:,:,:,:) 
+      real(kind=dp_t), pointer :: gph(:,:,:,:)
+      real(kind=dp_t), pointer :: pp(:,:,:,:)
+      real(kind=dp_t), pointer :: bp(:,:,:,:)
 
       type(bl_prof_timer), save :: bpt
 
@@ -620,15 +629,15 @@ contains
          do j = lo(2),hi(2)
             do i = lo(1),hi(1)
                gphi(i,j,k,1) = FOURTH*(phi(i+1,j,k  ) + phi(i+1,j+1,k  ) &
-                    +phi(i+1,j,k+1) + phi(i+1,j+1,k+1) & 
+                    +phi(i+1,j,k+1) + phi(i+1,j+1,k+1) &
                     -phi(i  ,j,k  ) - phi(i  ,j+1,k  ) &
                     -phi(i  ,j,k+1) - phi(i  ,j+1,k+1) ) /dx(1)
                gphi(i,j,k,2) = FOURTH*(phi(i,j+1,k  ) + phi(i+1,j+1,k  ) &
-                    +phi(i,j+1,k+1) + phi(i+1,j+1,k+1) & 
+                    +phi(i,j+1,k+1) + phi(i+1,j+1,k+1) &
                     -phi(i,j  ,k  ) - phi(i+1,j  ,k  ) &
                     -phi(i,j  ,k+1) - phi(i+1,j  ,k+1) ) /dx(2)
                gphi(i,j,k,3) = FOURTH*(phi(i,j  ,k+1) + phi(i+1,j  ,k+1) &
-                    +phi(i,j+1,k+1) + phi(i+1,j+1,k+1) & 
+                    +phi(i,j+1,k+1) + phi(i+1,j+1,k+1) &
                     -phi(i,j  ,k  ) - phi(i+1,j  ,k  ) &
                     -phi(i,j+1,k  ) - phi(i+1,j+1,k  ) ) /dx(3)
             end do
@@ -665,14 +674,14 @@ contains
       integer :: ng_un,ng_uo,ng_gp,ng_gh,ng_rh,ng_p,ng_h,ng_d
       integer :: lo(unew(1)%dim),hi(unew(1)%dim)
 
-      real(kind=dp_t), pointer :: upn(:,:,:,:) 
-      real(kind=dp_t), pointer :: uon(:,:,:,:) 
-      real(kind=dp_t), pointer :: gph(:,:,:,:) 
-      real(kind=dp_t), pointer :: gpp(:,:,:,:) 
-      real(kind=dp_t), pointer ::  rp(:,:,:,:) 
-      real(kind=dp_t), pointer ::  ph(:,:,:,:) 
-      real(kind=dp_t), pointer ::  pp(:,:,:,:) 
-      real(kind=dp_t), pointer ::  dp(:,:,:,:) 
+      real(kind=dp_t), pointer :: upn(:,:,:,:)
+      real(kind=dp_t), pointer :: uon(:,:,:,:)
+      real(kind=dp_t), pointer :: gph(:,:,:,:)
+      real(kind=dp_t), pointer :: gpp(:,:,:,:)
+      real(kind=dp_t), pointer ::  rp(:,:,:,:)
+      real(kind=dp_t), pointer ::  ph(:,:,:,:)
+      real(kind=dp_t), pointer ::  pp(:,:,:,:)
+      real(kind=dp_t), pointer ::  dp(:,:,:,:)
 
       type(bl_prof_timer), save :: bpt
 
@@ -765,9 +774,9 @@ contains
       !     Subtract off the density-weighted gradient.
       if (using_alt_energy_fix) then
          unew(lo(1):hi(1)) = unew(lo(1):hi(1)) - &
-              divcoeff(lo(1):hi(1))*gphi(lo(1):hi(1))/rhohalf(lo(1):hi(1)) 
+              divcoeff(lo(1):hi(1))*gphi(lo(1):hi(1))/rhohalf(lo(1):hi(1))
       else
-         unew(lo(1):hi(1)) = unew(lo(1):hi(1)) - gphi(lo(1):hi(1))/rhohalf(lo(1):hi(1)) 
+         unew(lo(1):hi(1)) = unew(lo(1):hi(1)) - gphi(lo(1):hi(1))/rhohalf(lo(1):hi(1))
       endif
 
       if (proj_type .eq. pressure_iters_comp) &    ! unew held the projection of (ustar-uold)
@@ -831,17 +840,17 @@ contains
       if (using_alt_energy_fix) then
          unew(lo(1):hi(1),lo(2):hi(2),1) = unew(lo(1):hi(1),lo(2):hi(2),1) - &
               gphi(lo(1):hi(1),lo(2):hi(2),1)*divcoeff(lo(1):hi(1),lo(2):hi(2))/ &
-              rhohalf(lo(1):hi(1),lo(2):hi(2)) 
+              rhohalf(lo(1):hi(1),lo(2):hi(2))
 
          unew(lo(1):hi(1),lo(2):hi(2),2) = unew(lo(1):hi(1),lo(2):hi(2),2) - &
               gphi(lo(1):hi(1),lo(2):hi(2),2)*divcoeff(lo(1):hi(1),lo(2):hi(2))/ &
-              rhohalf(lo(1):hi(1),lo(2):hi(2))          
+              rhohalf(lo(1):hi(1),lo(2):hi(2))
       else
          unew(lo(1):hi(1),lo(2):hi(2),1) = unew(lo(1):hi(1),lo(2):hi(2),1) - &
-              gphi(lo(1):hi(1),lo(2):hi(2),1)/rhohalf(lo(1):hi(1),lo(2):hi(2)) 
+              gphi(lo(1):hi(1),lo(2):hi(2),1)/rhohalf(lo(1):hi(1),lo(2):hi(2))
 
          unew(lo(1):hi(1),lo(2):hi(2),2) = unew(lo(1):hi(1),lo(2):hi(2),2) - &
-              gphi(lo(1):hi(1),lo(2):hi(2),2)/rhohalf(lo(1):hi(1),lo(2):hi(2)) 
+              gphi(lo(1):hi(1),lo(2):hi(2),2)/rhohalf(lo(1):hi(1),lo(2):hi(2))
       endif
 
       if (proj_type .eq. pressure_iters_comp) &    ! unew held the projection of (ustar-uold)
@@ -866,7 +875,7 @@ contains
             gphi(lo(1):hi(1),lo(2):hi(2),2) = gphi(lo(1):hi(1),lo(2):hi(2),2) * &
                                           divcoeff(lo(1):hi(1),lo(2):hi(2))
          endif
-         
+
          gpi(lo(1):hi(1),lo(2):hi(2),:) = gpi(lo(1):hi(1),lo(2):hi(2),:) + &
                                          gphi(lo(1):hi(1),lo(2):hi(2),:)
 
@@ -1113,7 +1122,7 @@ contains
     type(bl_prof_timer), save :: bpt
 
     call build(bpt, "hg_1d_solver")
-    
+
     dm = mla%dim
     nlevs = mla%nlevel
 

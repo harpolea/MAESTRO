@@ -267,13 +267,16 @@ contains
           ! does not contribute to the gravitational acceleration.
           do n=1,nlevs_radial
              do r = 0, nr(n)-1
-                ! FIXME: need to average u0
-                dpdr_cell(n,r) = -(c**2 * Dh0(n,r) + p0(n,r) * u0_1d(n,r)) * g / &
+                dpdr_cell(n,r) = -(Dh0(n,r) + p0(n,r) * u0_1d(n,r)) * g / &
                     ((c**2 * (Rr + TWO * r_cc_loc(n,r)) - TWO * g) * u0_1d(n,r))
 
                 !-Gconst*planar_invsq_mass / r_cc_loc(n,r)**2
              enddo
           enddo
+
+          print *, 'c**2 * Dh0(n,r)', c**2 * Dh0(:,:)
+          print *, 'p0(n,r) * u0_1d(n,r)', p0(:,:) * u0_1d(:,:)
+          print *, 'dpdr cell', dpdr_cell
 
        else if (do_2d_planar_octant .eq. 1) then
 
@@ -405,6 +408,8 @@ contains
           call fill_ghost_base(dpdr_cell,.true.)
 
        else
+
+           print *, 'AM I HERE????'
 
           ! constant gravity
           dpdr_cell = grav_const
@@ -640,7 +645,7 @@ contains
           ! does not contribute to the gravitational acceleration.
           do n=1,nlevs_radial
              do r = 1, nr(n)-1
-                dpdr_edge(n,r) = -(c**2 * Dh0_edge(n,r) + p0_edge(n,r) * &
+                dpdr_edge(n,r) = -(Dh0_edge(n,r) + p0_edge(n,r) * &
                     u0_edge(n,r)) * g / ((c**2 * &
                     (Rr + 2.0d0 * r_edge_loc(n,r)) - 2.0d0 * g) * u0_edge(n,r))
              enddo

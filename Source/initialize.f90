@@ -27,7 +27,7 @@ contains
                                      div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
                                      s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                                      p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi, &
-                                     tempbar,tempbar_init,grav_cell)
+                                     tempbar,tempbar_init,dpdr_cell)
 
     use restart_module
     use multifab_fill_ghost_module
@@ -67,7 +67,7 @@ contains
     real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
-    real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
+    real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),dpdr_cell(:,:)
 
     ! local
     type(ml_boxarray) :: mba, mba_old
@@ -327,16 +327,16 @@ contains
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
                               s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                               p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
-                              grav_cell)
+                              dpdr_cell)
 
     if (restart_with_vel_field) then
 
        if (spherical .eq. 1) then
-          call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:))
+          call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:),u0_1d(1,:))
        else
           ! init_base_state requires loop backwards over levels
           do n=max_levs,1,-1
-             call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:))
+             call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:),u0_1d(n,:))
           end do
        end if
 
@@ -351,8 +351,8 @@ contains
        call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
        if (fix_base_state) then
-          call compute_cutoff_coords(D0_old)
-          call make_grav_cell(grav_cell,D0_old)
+          call compute_cutoff_coords(Dh0_old)
+          call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
           call destroy(mba)
           return
        end if
@@ -365,12 +365,12 @@ contains
           Dh0_old = ZERO
        else
           ! set rho0 to be the average
-          call average(mla,sold,D0_old,dx,rho_comp)
-          call compute_cutoff_coords(D0_old)
+          call average(mla,sold,Dh0_old,dx,rhoh_comp)
+          call compute_cutoff_coords(Dh0_old)
 
           ! compute p0 with HSE
-          call make_grav_cell(grav_cell,D0_old)
-          call enforce_HSE(D0_old,p0_old,grav_cell)
+          call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
+          call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
           ! call eos with r,p as input to recompute T,h
           call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
@@ -586,13 +586,13 @@ contains
        ! deallocate 1D arrays
        deallocate(div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold,s0_init,D0_old)
        deallocate(Dh0_old,D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,etarho_ec)
-       deallocate(etarho_cc,psi,tempbar,tempbar_init,grav_cell)
+       deallocate(etarho_cc,psi,tempbar,tempbar_init,dpdr_cell)
 
        ! reallocate 1D arrays
        call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar, &
                                  gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old,D0_new, &
                                  Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
-                                 psi,tempbar,tempbar_init,grav_cell)
+                                 psi,tempbar,tempbar_init,dpdr_cell)
 
        ! copy outer pressure for reference
        p0_old(1,nr_fine-1) = p0_temp
@@ -641,14 +641,14 @@ contains
        etarho_ec(1,nr_fine) = etarho_cc(1,nr_fine-1)
 
        ! compute rho0 by calling average
-       call average(mla,sold,D0_old,dx,rho_comp)
-       call compute_cutoff_coords(D0_old)
+       call average(mla,sold,Dh0_old,dx,rhoh_comp)
+       call compute_cutoff_coords(Dh0_old)
 
        ! compute gravity
-       call make_grav_cell(grav_cell,D0_old)
+       call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
 
        ! compute p0 by HSE
-       call enforce_HSE(D0_old,p0_old,grav_cell)
+       call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
        ! compute temperature with EOS
        if (use_tfromp) then
@@ -683,7 +683,7 @@ contains
        deallocate(gamma1)
 
        ! compute div_coeff_old
-       call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,grav_cell)
+       call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
 
        ! recompute time step
        dt = 1.d20
@@ -708,7 +708,7 @@ contains
                                          gamma1bar,gamma1bar_hold,s0_init,sprim0_init,D0_old, &
                                          Dh0_old,D0_new,Dh0_new,p0_init, &
                                          p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
-                                         psi,tempbar,tempbar_init,grav_cell,chrls)
+                                         psi,tempbar,tempbar_init,dpdr_cell,chrls)
 
     use box_util_module
     use init_scalar_module
@@ -737,7 +737,7 @@ contains
     real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
-    real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
+    real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),dpdr_cell(:,:)
     real(dp_t)    , pointer       :: chrls(:,:,:,:,:,:,:)
 
     ! local
@@ -881,15 +881,15 @@ contains
     call initialize_1d_arrays(nlevs,div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold, &
                               s0_init,sprim0_init,D0_old,Dh0_old,D0_new,Dh0_new,p0_init, &
                               p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc,psi,tempbar,tempbar_init, &
-                              grav_cell)
+                              dpdr_cell)
 
     ! now that we have dr and nr we can fill initial state
     if (spherical .eq. 1) then
-       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(nlevs,:))
+       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(nlevs,:),u0_1d(1,:))
     else
        ! init_base_state requires loop backwards over levels
        do n=nlevs,1,-1
-          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:))
+          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:),u0_1d(n,:))
        end do
     end if
 
@@ -912,8 +912,8 @@ contains
     tempbar_init = s0_init(:,:,temp_comp)
 
     if (fix_base_state) then
-       call compute_cutoff_coords(D0_old)
-       call make_grav_cell(grav_cell,D0_old)
+       call compute_cutoff_coords(Dh0_old)
+       call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
        call destroy(mba)
        return
     end if
@@ -932,7 +932,7 @@ contains
        ! compute p0 with HSE
        !call make_grav_cell(grav_cell,D0_old)
 
-       call enforce_TOV(D0_old,p0_old,u0_1d)
+       call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
@@ -960,7 +960,7 @@ contains
                                             gamma1bar,gamma1bar_hold,s0_init,sprim0_init,D0_old, &
                                             Dh0_old,D0_new,Dh0_new,p0_init, &
                                             p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
-                                            psi,tempbar,tempbar_init,grav_cell,chrls)
+                                            psi,tempbar,tempbar_init,dpdr_cell,chrls)
 
     use probin_module, only: n_cellx, n_celly, n_cellz, &
          amr_buf_width, max_grid_size_1, max_grid_size_2, max_grid_size_3, &
@@ -994,7 +994,7 @@ contains
     real(dp_t)    , pointer       :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t)    , pointer       :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t)    , pointer       :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:)
-    real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
+    real(dp_t)    , pointer       :: etarho_cc(:,:),psi(:,:),tempbar(:,:),tempbar_init(:,:),dpdr_cell(:,:)
     real(dp_t)    , pointer       :: chrls(:,:,:,:,:,:,:)
 
     ! local
@@ -1097,17 +1097,21 @@ contains
     call initialize_1d_arrays(max_levs,div_coeff_old,div_coeff_new,gamma1bar, &
                               gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old,D0_new, &
                               Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
-                              psi,tempbar,tempbar_init,grav_cell)
+                              psi,tempbar,tempbar_init,dpdr_cell)
 
     ! now that we have dr and nr we can fill initial state
     if (spherical .eq. 1) then
-       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:))
+       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:),u0_1d(1,:))
     else
           ! init_base_state requires loop backwards over levels
        do n=max_levs,1,-1
-          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:))
+          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:),u0_1d(n,:))
        end do
     end if
+
+    print *, 'rho0', sprim0_init(:,:,rho_comp)
+    print *, 'rhoh0', sprim0_init(:,:,rhoh_comp)
+    print *, 'u0', u0_1d
 
     ! This will be a trivial thing at this point as u0_1d = 1 here.
     call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
@@ -1392,8 +1396,8 @@ contains
     tempbar_init = s0_init(:,:,temp_comp)
 
     if (fix_base_state) then
-       call compute_cutoff_coords(D0_old)
-       call make_grav_cell(grav_cell,D0_old)
+       call compute_cutoff_coords(Dh0_old)
+       call make_dpdr_cell(dpdr_cell,Dh0_old,p0_old,u0_1d)
        call destroy(mba)
        return
     end if
@@ -1411,7 +1415,7 @@ contains
 
        ! compute p0 with HSE
        !call make_grav_cell(grav_cell,D0_old)
-       call enforce_TOV(D0_old,p0_old,u0_1d)
+       call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
@@ -1432,14 +1436,14 @@ contains
   subroutine initialize_1d_arrays(num_levs,div_coeff_old,div_coeff_new,gamma1bar, &
                                   gamma1bar_hold,s0_init,sprim0_init,D0_old,Dh0_old,D0_new, &
                                   Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc, &
-                                  psi,tempbar,tempbar_init,grav_cell)
+                                  psi,tempbar,tempbar_init,dpdr_cell)
 
     integer    , intent(in) :: num_levs
     real(dp_t) , pointer    :: div_coeff_old(:,:),div_coeff_new(:,:),gamma1bar(:,:)
     real(dp_t) , pointer    :: gamma1bar_hold(:,:),s0_init(:,:,:),sprim0_init(:,:,:),D0_old(:,:)
     real(dp_t) , pointer    :: Dh0_old(:,:),D0_new(:,:),Dh0_new(:,:),p0_init(:,:)
     real(dp_t) , pointer    :: p0_old(:,:),p0_new(:,:),w0(:,:),u0_1d(:,:),etarho_ec(:,:),etarho_cc(:,:)
-    real(dp_t) , pointer    :: psi(:,:),tempbar(:,:),tempbar_init(:,:),grav_cell(:,:)
+    real(dp_t) , pointer    :: psi(:,:),tempbar(:,:),tempbar_init(:,:),dpdr_cell(:,:)
 
     if (spherical .eq. 0) then
        allocate(div_coeff_old (num_levs,0:nr_fine-1))
@@ -1462,7 +1466,7 @@ contains
        allocate(psi           (num_levs,0:nr_fine-1))
        allocate(tempbar       (num_levs,0:nr_fine-1))
        allocate(tempbar_init  (num_levs,0:nr_fine-1))
-       allocate(grav_cell     (num_levs,0:nr_fine-1))
+       allocate(dpdr_cell     (num_levs,0:nr_fine-1))
     else
        allocate(div_coeff_old (1,0:nr_fine-1))
        allocate(div_coeff_new (1,0:nr_fine-1))
@@ -1484,7 +1488,7 @@ contains
        allocate(psi           (1,0:nr_fine-1))
        allocate(tempbar       (1,0:nr_fine-1))
        allocate(tempbar_init  (1,0:nr_fine-1))
-       allocate(grav_cell     (1,0:nr_fine-1))
+       allocate(dpdr_cell     (1,0:nr_fine-1))
     end if
 
     div_coeff_old = ZERO
@@ -1507,7 +1511,7 @@ contains
     psi = ZERO
     tempbar = ZERO
     tempbar_init = ZERO
-    grav_cell = ZERO
+    dpdr_cell = ZERO
 
   end subroutine initialize_1d_arrays
 

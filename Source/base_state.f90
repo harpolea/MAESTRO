@@ -12,7 +12,7 @@ module base_state_module
 
   use bl_types, only: dp_t
   use network, only: nspec
-  
+
   implicit none
 
   real(dp_t), save :: base_cutoff_density_loc
@@ -27,7 +27,7 @@ module base_state_module
 
 contains
 
-  subroutine init_base_state(n,model_file,s0_init,p0_init,dx)
+  subroutine init_base_state(n,model_file,s0_init,p0_init,dx,u0_1d)
 
     use bl_prof_module, only: bl_prof_timer, build, destroy
     use parallel, only: parallel_IOProcessor
@@ -38,7 +38,7 @@ contains
     use probin_module, only: base_cutoff_density, prob_lo, &
                              grav_const, planar_invsq_mass, &
                              do_planar_invsq_grav, do_2d_planar_octant, &
-                             print_init_hse_diag
+                             print_init_hse_diag, g, Rr, c
     use variables, only: rho_comp, rhoh_comp, temp_comp, spec_comp, trac_comp, ntrac
     use geometry, only: dr, spherical, nr
     use inlet_bc_module, only: set_inlet_bcs
@@ -53,6 +53,7 @@ contains
     character(len=256), intent(in   ) :: model_file
     real(kind=dp_t)   , intent(inout) :: s0_init(0:,:)
     real(kind=dp_t)   , intent(inout) :: p0_init(0:)
+    real(kind=dp_t)   , intent(inout) :: u0_1d(0:)
     real(kind=dp_t)   , intent(in   ) :: dx(:)
 
     ! local
@@ -62,10 +63,10 @@ contains
     real(kind=dp_t) :: sumX
 
     type(bl_prof_timer), save :: bpt
-    
+
     real(kind=dp_t), parameter :: TINY = 1.0d-10
 
-    real(kind=dp_t) :: mencl, g, r_l, r_r, dpdr, rhog
+    real(kind=dp_t) :: mencl, gg, r_l, r_r, dpdr, rhog
     real(kind=dp_t) :: max_hse_error
 
     logical, save :: firstCall = .true.
@@ -105,7 +106,7 @@ contains
        call log('dr of input file data =                               ', dr_in)
        call log(' ')
        call log('maximum radius (cell-centered) of input model =       ', rmax)
-       
+
        if (dr(n) .lt. dr_in) then
           mod_dr = mod(dr_in,dr(n))
        else
@@ -129,7 +130,7 @@ contains
     else
        starting_rad = ZERO
     endif
-    
+
     do r=0,nr(n)-1
 
        rloc = starting_rad + (dble(r) + HALF)*dr(n)
@@ -180,7 +181,7 @@ contains
           p0_init(r) = eos_state%p ! p_ambient !
 
           s0_init(r,temp_comp) = t_ambient
-          
+
           if (ntrac .gt. 0) then
              s0_init(r,trac_comp:trac_comp+ntrac-1) = ZERO
           end if
@@ -214,7 +215,7 @@ contains
     ! check whether we are in HSE
 
     mencl = zero
-    
+
     if (spherical .eq. 1 .OR. do_2d_planar_octant .eq. 1) then
        mencl = four3rd*m_pi*dr(n)**3*s0_init(0,rho_comp)
     endif
@@ -222,7 +223,7 @@ contains
     max_hse_error = -1.d30
 
     do r=1,nr(n)-1
-       
+
        rloc = starting_rad + (dble(r) + HALF)*dr(n)
        rloc = min(rloc, rmax)
 
@@ -232,19 +233,21 @@ contains
           r_l = starting_rad + dble(r)*dr(n)
 
           if (spherical .eq. 1 .OR. do_2d_planar_octant .eq. 1) then
-             g = -Gconst*mencl/r_l**2
+             gg = -Gconst*mencl/r_l**2
              mencl = mencl &
                   + four3rd*m_pi*dr(n)*(r_l**2+r_l*r_r+r_r**2)*s0_init(r,rho_comp)
           else
              if (.not. do_planar_invsq_grav) then
-                g = grav_const
+                gg = grav_const
              else
-                g = -Gconst*planar_invsq_mass / r_l**2
+                gg = -Gconst*planar_invsq_mass / r_l**2
              endif
           endif
 
           dpdr = (p0_init(r) - p0_init(r-1))/dr(n)
-          rhog = HALF*(s0_init(r,rho_comp) + s0_init(r-1,rho_comp))*g
+          rhog = (c**2 * HALF*(s0_init(r,rhoh_comp) + s0_init(r-1,rhoh_comp)) + HALF*(p0_init(r) + p0_init(r-1))) * &
+              g / ((c**2 * (Rr + 2.0d0 * r_l) - 2.0d0 * g))
+          !rhog = HALF*(s0_init(r,rho_comp) + s0_init(r-1,rho_comp))*g
 
           if (print_init_hse_diag) then
              if ( parallel_IOProcessor() ) then
@@ -252,12 +255,14 @@ contains
                      abs(dpdr - rhog)/abs(rhog)
              endif
           endif
-          
+
           max_hse_error = max(max_hse_error, abs(dpdr - rhog)/abs(rhog))
 
        end if
 
     enddo
+
+    print *, 'base_state p_ambient', p_ambient
 
     if ( parallel_IOProcessor() ) then
        call log(' ')
@@ -273,6 +278,8 @@ contains
     call set_inlet_bcs()
 
     call destroy(bpt)
+
+    print *, 's0init rhoh', s0_init(:,rhoh_comp )
 
   end subroutine init_base_state
 
