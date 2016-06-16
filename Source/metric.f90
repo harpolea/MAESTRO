@@ -332,6 +332,8 @@ contains
                alphap => dataptr(alpha(n), m)
                s_primp => dataptr(s_prim(n), m)
                u_primp => dataptr(u_prim(n), m)
+               lo =  lwb(get_box(s(n), i))
+               hi =  upb(get_box(s(n), i))
 
                ! intialise by simply copying - assume rest of the components are unchanged
                s_primp(:,:,:,:) = sp(:,:,:,:)
@@ -350,6 +352,7 @@ contains
 
                            s_primp(i,j,k,rho_comp) = sp(i,j,k,rho_comp) / u0
                            s_primp(i,j,k,rhoh_comp) = sp(i,j,k,rhoh_comp) / u0
+                           s_primp(i,j,k,spec_comp) = sp(i,j,k,spec_comp) / u0
                            u_primp(i,j,k,:) = up(i,j,k,:) * u0
                        enddo
                    enddo
