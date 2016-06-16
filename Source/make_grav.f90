@@ -274,9 +274,9 @@ contains
              enddo
           enddo
 
-          print *, 'c**2 * Dh0(n,r)', c**2 * Dh0(:,:)
-          print *, 'p0(n,r) * u0_1d(n,r)', p0(:,:) * u0_1d(:,:)
-          print *, 'dpdr cell', dpdr_cell
+          !print *, 'c**2 * Dh0(n,r)', c**2 * Dh0(:,:)
+          !print *, 'p0(n,r) * u0_1d(n,r)', p0(:,:) * u0_1d(:,:)
+          !print *, 'dpdr cell', dpdr_cell
 
        else if (do_2d_planar_octant .eq. 1) then
 
@@ -408,8 +408,6 @@ contains
           call fill_ghost_base(dpdr_cell,.true.)
 
        else
-
-           print *, 'AM I HERE????'
 
           ! constant gravity
           dpdr_cell = grav_const

@@ -207,7 +207,7 @@ contains
     type(multifab) :: tempbar_init_cart(mla%nlevel)
 
     integer :: lo(mla%dim),hi(mla%dim)
-    integer :: ng_si,ng_so,ng_rw,ng_he,ng_hn,ng_tc
+    integer :: ng_si,ng_so,ng_rw,ng_he,ng_hn,ng_tc,ng_u
     integer :: dm,nlevs
     integer :: i,n
 
@@ -223,6 +223,7 @@ contains
     ng_rw = nghost(D_omegadot(1))
     ng_hn = nghost(rho_Hnuc(1))
     ng_he = nghost(rho_Hext(1))
+    ng_u  = nghost(u(1))
 
     ! put tempbar_init on Cart
     if (spherical == 1) then
@@ -319,14 +320,14 @@ contains
                                        snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                        rp(:,:,:,:),ng_rw, &
                                        hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:))
+                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:),ng_u)
                 else
                    mp => dataptr(mla%mask(n), i)
                    call burner_loop_3d(tempbar_init(n,:), &
                                        snp(:,:,:,:),ng_si,sop(:,:,:,:),ng_so, &
                                        rp(:,:,:,:),ng_rw, &
                                        hnp(:,:,:,1),ng_hn,hep(:,:,:,1),ng_he, &
-                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:),mp(:,:,:,1))
+                                       dt,lo,hi,chrls(n,:,:,:,:,:,:),up(:,:,:,:),ng_u,mp(:,:,:,1))
                 end if
              endif
           end select
@@ -793,7 +794,7 @@ contains
 
   subroutine burner_loop_3d(tempbar_init,sold,ng_si,snew,ng_so,&
                             D_omegadot,ng_rw,rho_Hnuc,ng_hn, &
-                            rho_Hext,ng_he,dt,lo,hi,chrls,u,mask)
+                            rho_Hext,ng_he,dt,lo,hi,chrls,u,ng_u,mask)
 
     use bl_constants_module
     use burner_module
@@ -802,7 +803,7 @@ contains
     use probin_module, ONLY: burning_cutoff_density, burner_threshold_species, &
          burner_threshold_cutoff, drive_initial_convection, reaction_sum_tol
 
-    integer        , intent(in   ) :: lo(:),hi(:),ng_si,ng_so,ng_rw,ng_he,ng_hn
+    integer        , intent(in   ) :: lo(:),hi(:),ng_si,ng_so,ng_rw,ng_he,ng_hn,ng_u
     real(kind=dp_t), intent(in   ) ::         sold(lo(1)-ng_si:,lo(2)-ng_si:,lo(3)-ng_si:,:)
     real(kind=dp_t), intent(  out) ::         snew(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
     real(kind=dp_t), intent(  out) :: D_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
@@ -811,7 +812,7 @@ contains
     real(kind=dp_t), intent(in   ) :: tempbar_init(0:)
     real(kind=dp_t), intent(in   ) :: dt
     real(kind=dp_t) , intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
-    real(kind=dp_t),  intent(in   ) ::   u(:,:,:,:)
+    real(kind=dp_t),  intent(in   ) ::   u(lo(1)-ng_u:,lo(2)-ng_u:,lo(3)-ng_u:,:)
     logical        , intent(in   ), optional :: mask(lo(1):,lo(2):,lo(3):)
 
     !     Local variables
@@ -894,8 +895,10 @@ contains
                 ! Calculate gravity stuff
                 grav_term = 0.d0
                 do l = 0, 3
-                    do m = 0, 3
-                        grav_term = grav_term - chrls(l,l,m,i,j,k) * u(m,i,j,k)
+                    ! do u0 separately
+                    grav_term = grav_term - chrls(l,l,0,i,j,k)
+                    do m = 1, 3
+                        grav_term = grav_term - chrls(l,l,m,i,j,k) * u(i,j,k,m)
                     enddo
                 enddo
 

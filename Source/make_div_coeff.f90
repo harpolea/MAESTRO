@@ -21,7 +21,7 @@ contains
     use geometry, only: nr_fine, dr, anelastic_cutoff_coord, r_start_coord, r_end_coord, &
          nr, numdisjointchunks, nlevs_radial
     use restrict_base_module
-    use probin_module, only: beta_type, use_linear_grav_in_beta
+    use probin_module, only: beta_type, use_linear_grav_in_beta, c
 
     real(kind=dp_t), intent(  out) :: div_coeff(:,0:)
     real(kind=dp_t), intent(in   ) :: Dh0(:,0:), u0(:,0:)
@@ -62,7 +62,7 @@ contains
        ! call restrict_base and fill_ghost_base
        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-       print *, 'dpdr_centre', dpdr_centre
+       !print *, 'dpdr_centre', dpdr_centre
        do n=1,nlevs_radial
 
           do j=1,numdisjointchunks(n)
@@ -79,6 +79,8 @@ contains
              do r=r_start_coord(n,j),r_end_coord(n,j)
 
                 if (r < anelastic_cutoff_coord(n)) then
+
+                    !print *, 'AND HERE?'
 
                    if (r .eq. 0 .or. r .eq. nr(n)-1) then
 
@@ -126,7 +128,7 @@ contains
                       ! just do piecewise constant integration
                       !integral = !abs(grav_center(n,r))*Dh0(n,r)*u0(n,r)*dr(n)/(p0(n,r)*gamma1bar(n,r))
                       integral = abs(dpdr_centre(n,r))*dr(n)/(p0(n,r)*gamma1bar(n,r))
-                      print *, 'integral', integral
+                      !print *, 'integral', integral
 
                    else
 
@@ -157,6 +159,7 @@ contains
                               coeff2*log( (p0(n,r) + HALF*nu*dr(n))/ &
                                           (p0(n,r) - HALF*nu*dr(n)) ) - &
                               coeff3*dr(n)
+                        !print *, 'integral2', integral
 
                       else
 
@@ -170,17 +173,23 @@ contains
                                            (gamma1bar(n,r) - HALF*mu*dr(n))) - &
                                coeff2*log( (p0(n,r) + HALF*nu*dr(n))/ &
                                            (p0(n,r) - HALF*nu*dr(n))) )
+                        !print *, 'integral3', integral
 
                       end if
                    endif
-
-                   beta0_edge(n,r+1) = beta0_edge(n,r) * exp(-integral)
+                   ! FIXME: put divide by c in the get it to work - not
+                   !        entirely sure it actually belongs there?
+                   beta0_edge(n,r+1) = beta0_edge(n,r) * exp(-integral/c)
                    div_coeff(n,r) = HALF*(beta0_edge(n,r) + beta0_edge(n,r+1))
 
                 else ! r >= anelastic_cutoff
 
+                    !print *, 'AM I HERE?'
+
                    div_coeff(n,r) = div_coeff(n,r-1) * (Dh0(n,r)*u0(n,r)/(Dh0(n,r-1)*u0(n,r-1)))
                    beta0_edge(n,r+1) = 2.d0*div_coeff(n,r) - beta0_edge(n,r)
+
+                   !print *,div_coeff(n,r-1)
                 endif
 
              end do
@@ -278,11 +287,13 @@ contains
     call restrict_base(div_coeff,.true.)
     call fill_ghost_base(div_coeff,.true.)
 
-    print *, 'div_coeff', div_coeff(:,:)
-    print *, 'u0', u0(:,:)
-    print *, 'p0', p0(:,:)
-    print *, 'Dh0', Dh0(:,:)
-    print *, 'beta0_edge', beta0_edge(:,:)
+    !print *, 'anelastic_cutoff_coord', anelastic_cutoff_coord
+
+    !print *, 'div_coeff', div_coeff(:,:)
+    !print *, 'u0', u0(:,:)
+    !print *, 'p0', p0(:,:)
+    !print *, 'Dh0', Dh0(:,:)
+    !print *, 'beta0_edge', beta0_edge(:,:)
 
   end subroutine make_div_coeff
 

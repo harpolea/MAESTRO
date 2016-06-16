@@ -236,7 +236,7 @@ contains
        p0(1,r) = p0(1,r-1)
     end do
 
-    print *, 'TOV p0', p0
+    !print *, 'TOV p0', p0
 
     do n=2,nlevs_radial
        do i=1,numdisjointchunks(n)
@@ -325,8 +325,8 @@ contains
 
     end do ! end loop over levels
 
-    print *, 'TOV p02', p0
-    print *, 'nlevs', nlevs_radial
+    !print *, 'TOV p02', p0
+    !print *, 'nlevs', nlevs_radial
 
     ! now compare pressure in the last cell and offset to make sure we
     ! are integrating "from the top"
@@ -337,9 +337,9 @@ contains
     ! offset level 1
     p0(1,:) = p0(1,:) - offset
 
-    print *, 'TOV p03', p0
+    !print *, 'TOV p03', p0
 
-    print *, 'TOV p0_old', p0_old
+    !print *, 'TOV p0_old', p0_old
 
     ! offset remaining levels
     do n=2,nlevs_radial

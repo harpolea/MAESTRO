@@ -83,7 +83,7 @@ contains
     type(multifab)  :: gradw0_cart(mla%nlevel)
 
     integer                  :: i,r,lo(mla%dim),hi(mla%dim),dm,nlevs
-    integer                  :: ng_s,ng_f,ng_gp,n,ng_uo,ng_um, ng_n
+    integer                  :: ng_s,ng_f,ng_gp,n,ng_uo,ng_um, ng_n, ng_u0
 
     type(multifab) :: w0_cart(mla%nlevel)
     integer :: ng_wc, ng_wm, ng_w, ng_gw
@@ -168,6 +168,7 @@ contains
              wmp => dataptr(umac(n,3),i)
 
              ng_uo = nghost(uold(1))
+             ng_u0 = nghost(u0(1))
 
              u0p => dataptr(u0(n),i)
              gamp => dataptr(gam(n),i)
@@ -202,8 +203,8 @@ contains
                                           w0(n,:), &
                                           gpp(:,:,:,:),ng_gp,rp(:,:,:,index_rho),rp(:,:,:,index_Dh),ng_s, &
                                           D0(n,:),Dh0(n,:),grav(n,:),w0_force(n,:),lo,hi,n, &
-                                          do_add_utilde_force,u0p(:,:,:,:), &
-                                          chrls(n,:,:,:,:,:,:),gamp(:,:,:,:))
+                                          do_add_utilde_force,u0p(:,:,:,1), &
+                                          ng_u0,chrls(n,:,:,:,:,:,:),gamp(:,:,:,:))
              end if
           end select
        end do
@@ -356,14 +357,14 @@ contains
                                   w0, &
                                   gpi,ng_gp,D,Dh,ng_s, &
                                   D0,Dh0,grav,w0_force,lo,hi,n, &
-                                  do_add_utilde_force,u0,chrls,gam)
+                                  do_add_utilde_force,u0,ng_u0,chrls,gam)
 
     use geometry,  only: sin_theta, cos_theta, omega, nr, dr
     use bl_constants_module
     use probin_module, only: base_cutoff_density, buoyancy_cutoff_factor, &
                              rotation_radius
 
-    integer        , intent(in   ) ::  lo(:),hi(:),ng_f,ng_gp,ng_s, ng_uo, ng_um, n
+    integer        , intent(in   ) ::  lo(:),hi(:),ng_f,ng_gp,ng_s, ng_uo, ng_um, n, ng_u0
     real(kind=dp_t), intent(inout) :: vel_force(lo(1)-ng_f :,lo(2)-ng_f :,lo(3)-ng_f :,:)
     logical        , intent(in   ) :: is_final_update
     real(kind=dp_t), intent(in   ) ::      uold(lo(1)-ng_uo:,lo(2)-ng_uo:,lo(3)-ng_uo:,:)
@@ -379,9 +380,9 @@ contains
     real(kind=dp_t), intent(in   ) :: grav(0:)
     real(kind=dp_t), intent(in   ) :: w0_force(0:)
     logical        , intent(in   ) :: do_add_utilde_force
-    real(kind=dp_t), intent(in   ) ::      u0(:,lo(1)-ng_um:,lo(2)-ng_um:,lo(3)-ng_um:)
+    real(kind=dp_t), intent(in   ) ::      u0(lo(1)-ng_u0:,lo(2)-ng_u0:,lo(3)-ng_u0:)
     real(kind=dp_t), intent(in   ) :: chrls(0:,0:,0:,0:,0:,0:)
-    real(kind=dp_t), intent(in   ) :: gam(:,0:,0:,0:)
+    real(kind=dp_t), intent(in   ) :: gam(lo(1)-ng_u0:,lo(2)-ng_u0:,lo(3)-ng_u0:,:)
 
     integer         :: i,j,k,m
     real(kind=dp_t) :: Dpert
@@ -459,29 +460,29 @@ contains
              ! NOTE: using the fact that the gamma 3-metric is diagonal
              ! Do 0 index separately as need time component of velocity, which for conserved variables is just 1
              m = 0
-             gr_term(1) = gr_term(1) + gam(1,i,j,k) * &
+             gr_term(1) = gr_term(1) + gam(i,j,k,1) * &
               (chrls(m,1,1,i,j,k) * (umac(i,j,k) + umac(i+1,j,k)) + &
                chrls(m,2,1,i,j,k) * (vmac(i,j,k) + vmac(i+1,j,k)) + &
                chrls(m,3,1,i,j,k) * (wmac(i,j,k) + wmac(i+1,j,k)))
-             gr_term(2) = gr_term(2) + gam(2,i,j,k) * &
+             gr_term(2) = gr_term(2) + gam(i,j,k,2) * &
               (chrls(m,1,2,i,j,k) * (umac(i,j,k) + umac(i,j+1,k)) + &
                chrls(m,2,2,i,j,k) * (vmac(i,j,k) + vmac(i,j+1,k)) + &
                chrls(m,3,2,i,j,k) * (wmac(i,j,k) + wmac(i,j+1,k)))
-             gr_term(3) = gr_term(3) + gam(3,i,j,k) * &
+             gr_term(3) = gr_term(3) + gam(i,j,k,3) * &
               (chrls(m,1,3,i,j,k) * (umac(i,j,k) + umac(i,j,k+1)) + &
                chrls(m,2,3,i,j,k) * (vmac(i,j,k) + vmac(i,j,k+1)) + &
                chrls(m,3,3,i,j,k) * (wmac(i,j,k) + wmac(i,j,k+1)))
 
              do m = 1, 3
-                gr_term(1) = gr_term(1) + gam(1,i,j,k) * uold(i,j,k,m) * &
+                gr_term(1) = gr_term(1) + gam(i,j,k,1) * uold(i,j,k,m) * &
                  (chrls(m,1,1,i,j,k) * (umac(i,j,k) + umac(i+1,j,k)) + &
                   chrls(m,2,1,i,j,k) * (vmac(i,j,k) + vmac(i+1,j,k)) + &
                   chrls(m,3,1,i,j,k) * (wmac(i,j,k) + wmac(i+1,j,k)))
-                gr_term(2) = gr_term(2) + gam(2,i,j,k) * uold(i,j,k,m) * &
+                gr_term(2) = gr_term(2) + gam(i,j,k,2) * uold(i,j,k,m) * &
                  (chrls(m,1,2,i,j,k) * (umac(i,j,k) + umac(i,j+1,k)) + &
                   chrls(m,2,2,i,j,k) * (vmac(i,j,k) + vmac(i,j+1,k)) + &
                   chrls(m,3,2,i,j,k) * (wmac(i,j,k) + wmac(i,j+1,k)))
-                gr_term(3) = gr_term(3) + gam(3,i,j,k) * uold(i,j,k,m) * &
+                gr_term(3) = gr_term(3) + gam(i,j,k,3) * uold(i,j,k,m) * &
                  (chrls(m,1,3,i,j,k) * (umac(i,j,k) + umac(i,j,k+1)) + &
                   chrls(m,2,3,i,j,k) * (vmac(i,j,k) + vmac(i,j,k+1)) + &
                   chrls(m,3,3,i,j,k) * (wmac(i,j,k) + wmac(i,j,k+1)))
@@ -491,13 +492,13 @@ contains
              ! note: if use_alt_energy_fix = T, then gphi is already
              ! weighted by beta_0
              vel_force(i,j,k,1) = -coriolis_term(1) - centrifugal_term(1) - &
-                  gpi(i,j,k,1) / (Dh(i,j,k) * u0(1,i,j,k)) + gr_term(1)
+                  gpi(i,j,k,1) / (Dh(i,j,k) * u0(i,j,k)) + gr_term(1)
 
              vel_force(i,j,k,2) = -coriolis_term(2) - centrifugal_term(2) - &
-                  gpi(i,j,k,2) / (Dh(i,j,k) * u0(1,i,j,k)) + gr_term(2)
+                  gpi(i,j,k,2) / (Dh(i,j,k) * u0(i,j,k)) + gr_term(2)
 
              vel_force(i,j,k,3) = -coriolis_term(3) - centrifugal_term(3) + &
-                  ( Dpert * grav(k) - gpi(i,j,k,3) ) / (Dh(i,j,k) * u0(1,i,j,k)) &
+                  ( Dpert * grav(k) - gpi(i,j,k,3) ) / (Dh(i,j,k) * u0(i,j,k)) &
                   - w0_force(k) + gr_term(3)
 
           end do

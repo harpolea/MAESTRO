@@ -262,8 +262,6 @@ contains
 
     enddo
 
-    print *, 'base_state p_ambient', p_ambient
-
     if ( parallel_IOProcessor() ) then
        call log(' ')
        call log('Maximum HSE Error = ', max_hse_error)
@@ -278,8 +276,6 @@ contains
     call set_inlet_bcs()
 
     call destroy(bpt)
-
-    print *, 's0init rhoh', s0_init(:,rhoh_comp )
 
   end subroutine init_base_state
 

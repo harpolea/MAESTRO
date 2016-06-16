@@ -1109,9 +1109,9 @@ contains
        end do
     end if
 
-    print *, 'rho0', sprim0_init(:,:,rho_comp)
-    print *, 'rhoh0', sprim0_init(:,:,rhoh_comp)
-    print *, 'u0', u0_1d
+    !print *, 'rho0', sprim0_init(:,:,rho_comp)
+    !print *, 'rhoh0', sprim0_init(:,:,rhoh_comp)
+    !print *, 'u0', u0_1d
 
     ! This will be a trivial thing at this point as u0_1d = 1 here.
     call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
