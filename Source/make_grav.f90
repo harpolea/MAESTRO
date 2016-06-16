@@ -230,7 +230,7 @@ contains
 
   end subroutine make_grav_cell
 
-  subroutine make_dpdr_cell(dpdr_cell, Dh0, p0, u0)
+  subroutine make_dpdr_cell(dpdr_cell, Dh0, p0, u0_1d)
 
     use bl_constants_module
     use geometry, only: spherical, nr_fine, r_cc_loc, r_edge_loc, &
@@ -250,13 +250,12 @@ contains
 
     real(kind=dp_t), intent(  out) :: dpdr_cell(:,0:)
     real(kind=dp_t), intent(inout) ::   p0(:,0:)
-    type(multifab),  intent(inout) ::   u0(:)
+    real(kind=dp_t),  intent(inout) ::   u0_1d(:,0:)
 
     ! Local variables
     integer                      :: r, n, i,j
     real(kind=dp_t), allocatable :: m(:,:)
     real(kind=dp_t)              :: term1, term2
-    real(kind=dp_t),     pointer :: u0p(:,:,:,:)
 
     if (spherical .eq. 0) then
 
@@ -267,16 +266,13 @@ contains
           ! at the origin.  The mass in the computational domain
           ! does not contribute to the gravitational acceleration.
           do n=1,nlevs_radial
-             do i=1,nfabs(u0(n))
-                 u0p => dataptr(u0(n),i)
-                 do r = 0, nr(n)-1
-                    ! FIXME: need to average u0
-                    dpdr_cell(n,r) = -(c**2 * Dh0(n,r) + p0(n,r) * u0p(1,1,1,r)) * g / &
-                        ((c**2 * (Rr + TWO * r_cc_loc(n,r)) - TWO * g) * u0p(1,1,1,r))
+             do r = 0, nr(n)-1
+                ! FIXME: need to average u0
+                dpdr_cell(n,r) = -(c**2 * Dh0(n,r) + p0(n,r) * u0_1d(n,r)) * g / &
+                    ((c**2 * (Rr + TWO * r_cc_loc(n,r)) - TWO * g) * u0_1d(n,r))
 
-                    !-Gconst*planar_invsq_mass / r_cc_loc(n,r)**2
-                 enddo
-              enddo
+                !-Gconst*planar_invsq_mass / r_cc_loc(n,r)**2
+             enddo
           enddo
 
        else if (do_2d_planar_octant .eq. 1) then
@@ -286,13 +282,9 @@ contains
           allocate(m(nlevs_radial,0:nr_fine-1))
 
           n = 1
-          do i=1,nfabs(u0(n))
-              u0p => dataptr(u0(n),i)
-              m(n,0) = FOUR3RD*M_PI*Dh0(n,0)*r_cc_loc(n,0)**3
-              ! FIXME: chose 1s but should really be an average for u0
-              dpdr_cell(n,0) = -(c**2 * Dh0(n,0) + p0(n,0) * u0p(1,1,1,1) * g )/ &
-                ((c**2 * (Rr + 2.0d0 * r_cc_loc(n,0)) - 2.0d0 * g) * u0p(1,1,1,1))
-          enddo
+          m(n,0) = FOUR3RD*M_PI*Dh0(n,0)*r_cc_loc(n,0)**3
+          dpdr_cell(n,0) = -(c**2 * Dh0(n,0) + p0(n,0) * u0_1d(n,0) * g )/ &
+            ((c**2 * (Rr + 2.0d0 * r_cc_loc(n,0)) - 2.0d0 * g) * u0_1d(n,0))
 
           do r=1,nr(n)-1
 
@@ -330,85 +322,82 @@ contains
           enddo
 
           do n = 2, nlevs_radial
-             do j=1,nfabs(u0(n))
-                 u0p => dataptr(u0(n),j)
-                 do i=1,numdisjointchunks(n)
+             do i=1,numdisjointchunks(n)
 
-                    if (r_start_coord(n,i) .eq. 0) then
-                       m(n,0) = FOUR3RD*M_PI*Dh0(n,0)*r_cc_loc(n,0)**3
-                       dpdr_cell(n,0) = -Gconst * m(n,0) / r_cc_loc(n,0)**2
-                    else
-                       r = r_start_coord(n,i)
-                       m(n,r) = m(n-1,r/ref_ratio-1)
+                if (r_start_coord(n,i) .eq. 0) then
+                   m(n,0) = FOUR3RD*M_PI*Dh0(n,0)*r_cc_loc(n,0)**3
+                   dpdr_cell(n,0) = -Gconst * m(n,0) / r_cc_loc(n,0)**2
+                else
+                   r = r_start_coord(n,i)
+                   m(n,r) = m(n-1,r/ref_ratio-1)
 
-                       ! the mass is defined at the cell-centers, so to compute
-                       ! the mass at the current center, we need to add the
-                       ! contribution of the upper half of the zone below us and
-                       ! the lower half of the current zone.
+                   ! the mass is defined at the cell-centers, so to compute
+                   ! the mass at the current center, we need to add the
+                   ! contribution of the upper half of the zone below us and
+                   ! the lower half of the current zone.
 
-                       ! don't add any contributions from outside the star --
-                       ! i.e.  rho < base_cutoff_density
-                       if (Dh0(n-1,r/ref_ratio-1) > base_cutoff_density) then
-                          term1 = FOUR3RD*M_PI*Dh0(n-1,r/ref_ratio-1) * &
-                               (r_edge_loc(n-1,r/ref_ratio) - r_cc_loc(n-1,r/ref_ratio-1)) * &
-                               (r_edge_loc(n-1,r/ref_ratio)**2 + &
-                               r_edge_loc(n-1,r/ref_ratio)*r_cc_loc(n-1,r/ref_ratio-1) + &
-                               r_cc_loc(n-1,r/ref_ratio-1)**2)
-                       else
-                          term1 = ZERO
-                       endif
+                   ! don't add any contributions from outside the star --
+                   ! i.e.  rho < base_cutoff_density
+                   if (Dh0(n-1,r/ref_ratio-1) > base_cutoff_density) then
+                      term1 = FOUR3RD*M_PI*Dh0(n-1,r/ref_ratio-1) * &
+                           (r_edge_loc(n-1,r/ref_ratio) - r_cc_loc(n-1,r/ref_ratio-1)) * &
+                           (r_edge_loc(n-1,r/ref_ratio)**2 + &
+                           r_edge_loc(n-1,r/ref_ratio)*r_cc_loc(n-1,r/ref_ratio-1) + &
+                           r_cc_loc(n-1,r/ref_ratio-1)**2)
+                   else
+                      term1 = ZERO
+                   endif
 
-                       if (Dh0(n,r) > base_cutoff_density) then
-                          term2 = FOUR3RD*M_PI*Dh0(n,r  )*&
-                               (r_cc_loc(n,r) - r_edge_loc(n,r  )) * &
-                               (r_cc_loc(n,r)**2 + &
-                               r_cc_loc(n,r)*r_edge_loc(n,r  ) + &
-                               r_edge_loc(n,r  )**2)
-                       else
-                          term2 = ZERO
-                       endif
+                   if (Dh0(n,r) > base_cutoff_density) then
+                      term2 = FOUR3RD*M_PI*Dh0(n,r  )*&
+                           (r_cc_loc(n,r) - r_edge_loc(n,r  )) * &
+                           (r_cc_loc(n,r)**2 + &
+                           r_cc_loc(n,r)*r_edge_loc(n,r  ) + &
+                           r_edge_loc(n,r  )**2)
+                   else
+                      term2 = ZERO
+                   endif
 
-                       m(n,r) = m(n,r) + term1 + term2
+                   m(n,r) = m(n,r) + term1 + term2
 
-                       dpdr_cell(n,r) = -Gconst * m(n,r) / r_cc_loc(n,r)**2
+                   dpdr_cell(n,r) = -Gconst * m(n,r) / r_cc_loc(n,r)**2
 
-                    end if
+                end if
 
-                    do r=r_start_coord(n,i)+1,r_end_coord(n,i)
+                do r=r_start_coord(n,i)+1,r_end_coord(n,i)
 
-                       ! the mass is defined at the cell-centers, so to compute
-                       ! the mass at the current center, we need to add the
-                       ! contribution of the upper half of the zone below us and
-                       ! the lower half of the current zone.
+                   ! the mass is defined at the cell-centers, so to compute
+                   ! the mass at the current center, we need to add the
+                   ! contribution of the upper half of the zone below us and
+                   ! the lower half of the current zone.
 
-                       ! don't add any contributions from outside the star --
-                       ! i.e.  rho < base_cutoff_density
-                       if (Dh0(n,r-1) > base_cutoff_density) then
-                          term1 = FOUR3RD*M_PI*Dh0(n,r-1) * &
-                               (r_edge_loc(n,r) - r_cc_loc(n,r-1)) * &
-                               (r_edge_loc(n,r)**2 + &
-                               r_edge_loc(n,r)*r_cc_loc(n,r-1) + &
-                               r_cc_loc(n,r-1)**2)
-                       else
-                          term1 = ZERO
-                       endif
+                   ! don't add any contributions from outside the star --
+                   ! i.e.  rho < base_cutoff_density
+                   if (Dh0(n,r-1) > base_cutoff_density) then
+                      term1 = FOUR3RD*M_PI*Dh0(n,r-1) * &
+                           (r_edge_loc(n,r) - r_cc_loc(n,r-1)) * &
+                           (r_edge_loc(n,r)**2 + &
+                           r_edge_loc(n,r)*r_cc_loc(n,r-1) + &
+                           r_cc_loc(n,r-1)**2)
+                   else
+                      term1 = ZERO
+                   endif
 
-                       if (Dh0(n,r) > base_cutoff_density) then
-                          term2 = FOUR3RD*M_PI*Dh0(n,r  )*&
-                               (r_cc_loc(n,r) - r_edge_loc(n,r  )) * &
-                               (r_cc_loc(n,r)**2 + &
-                               r_cc_loc(n,r)*r_edge_loc(n,r  ) + &
-                               r_edge_loc(n,r  )**2)
-                       else
-                          term2 = ZERO
-                       endif
+                   if (Dh0(n,r) > base_cutoff_density) then
+                      term2 = FOUR3RD*M_PI*Dh0(n,r  )*&
+                           (r_cc_loc(n,r) - r_edge_loc(n,r  )) * &
+                           (r_cc_loc(n,r)**2 + &
+                           r_cc_loc(n,r)*r_edge_loc(n,r  ) + &
+                           r_edge_loc(n,r  )**2)
+                   else
+                      term2 = ZERO
+                   endif
 
-                       m(n,r) = m(n,r-1) + term1 + term2
+                   m(n,r) = m(n,r-1) + term1 + term2
 
-                       dpdr_cell(n,r) = -Gconst * m(n,r) / r_cc_loc(n,r)**2
+                   dpdr_cell(n,r) = -Gconst * m(n,r) / r_cc_loc(n,r)**2
 
-                    end do
-                 enddo
+                end do
              enddo
           end do
 
@@ -606,7 +595,7 @@ contains
 
   end subroutine make_grav_edge
 
-  subroutine make_dpdr_edge(dpdr_edge, Dh0, p0, u0)
+  subroutine make_dpdr_edge(dpdr_edge, Dh0, p0, u0_1d)
 
     use bl_constants_module
     use geometry, only: spherical, r_edge_loc, nr_fine, nlevs_radial, nr, &
@@ -615,7 +604,6 @@ contains
          do_planar_invsq_grav, planar_invsq_mass, do_2d_planar_octant, ref_ratio, g, Rr, c
     use fundamental_constants_module, only: Gconst
     use restrict_base_module
-    use multifab_module
 
     ! compute the base state gravity at the cell edges (grav_edge(1)
     ! is the gravitational acceleration at the left edge of zone 1).
@@ -624,7 +612,7 @@ contains
     real(kind=dp_t), intent(  out) :: dpdr_edge(:,0:)
     real(kind=dp_t), intent(inout) ::   p0(:,0:)
     real(kind=dp_t), intent(inout) ::   Dh0(:,0:)
-    type(multifab), intent(inout) ::   u0(:)
+    real(kind=dp_t), intent(inout) ::   u0_1d(:,0:)
 
     ! Local variables
     integer                      :: r, n, i
@@ -633,18 +621,13 @@ contains
     real(kind=dp_t)              :: Dh0_edge(nlevs_radial,1:nr_fine-1)
     real(kind=dp_t)              :: p0_edge(nlevs_radial,1:nr_fine-1)
     real(kind=dp_t)              :: u0_edge(nlevs_radial,1:nr_fine-1)
-    real(kind=dp_t),     pointer :: u0p(:,:,:,:)
 
     do n=1,nlevs_radial
-       do i=1,nfabs(u0(n))
-           u0p => dataptr(u0(n),i)
-           do r = 1, nr(n)-1
-              Dh0_edge(n,r) = (Dh0(n,r) + Dh0(n,r-1))/2.0d0
-              p0_edge(n,r) = (p0(n,r) + p0(n,r-1))/2.0d0
-              ! FIXME: chose 0s but should really be an average for u0
-              u0_edge(n,r) = (u0p(1,0,0,r) + u0p(1,0,0,r-1))/2.0d0
-           enddo
-       enddo
+        do r = 1, nr(n)-1
+          Dh0_edge(n,r) = (Dh0(n,r) + Dh0(n,r-1))/2.0d0
+          p0_edge(n,r) = (p0(n,r) + p0(n,r-1))/2.0d0
+          u0_edge(n,r) = (u0_1d(n,r) + u0_1d(n,r-1))/2.0d0
+        enddo
     enddo
 
     if (spherical .eq. 0) then

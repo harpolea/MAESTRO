@@ -606,7 +606,7 @@ contains
        p0_new = p0_old
 
        ! FIXME: need to recalculate u0 at some point
-       call enforce_TOV(D0_new,p0_new,u0)
+       call enforce_TOV(D0_new,p0_new,u0_1d)
 
        ! 4F
 
@@ -1113,7 +1113,7 @@ contains
        ! set new p0 through HSE
        p0_new = p0_old
        ! FIXME: recalculate u0 at some point
-       call enforce_TOV(D0_new,p0_new,u0)
+       call enforce_TOV(D0_new,p0_new,u0_1d)
        p0_nph = HALF*(p0_old+p0_new)
 
        ! 8F

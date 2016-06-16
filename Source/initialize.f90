@@ -932,7 +932,7 @@ contains
        ! compute p0 with HSE
        !call make_grav_cell(grav_cell,D0_old)
 
-       call enforce_TOV(D0_old,p0_old,u0)
+       call enforce_TOV(D0_old,p0_old,u0_1d)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
@@ -1411,7 +1411,7 @@ contains
 
        ! compute p0 with HSE
        !call make_grav_cell(grav_cell,D0_old)
-       call enforce_TOV(D0_old,p0_old,u0)
+       call enforce_TOV(D0_old,p0_old,u0_1d)
 
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)

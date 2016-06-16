@@ -115,7 +115,6 @@ contains
     eos_state%T     = temp
     eos_state%p     = p0_init
     eos_state%rho   = s0_init(rho_comp)
-    print *, s0_init(rho_comp)
     eos_state%xn(:) = s0_init(spec_comp:spec_comp+nspec-1)/s0_init(rho_comp)
 
     call eos(eos_input_tp, eos_state)

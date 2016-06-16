@@ -333,6 +333,9 @@ contains
                s_primp => dataptr(s_prim(n), m)
                u_primp => dataptr(u_prim(n), m)
 
+               ! intialise by simply copying - assume rest of the components are unchanged
+               s_primp(:,:,:,:) = sp(:,:,:,:)
+
                do k = lo(3), hi(3)
                    do j = lo(2), hi(2)
                        do i = lo(1), hi(1)
@@ -474,6 +477,9 @@ contains
                s_primp => dataptr(s_prim(n), m)
                u_primp => dataptr(u_prim(n), m)
 
+               ! intialise by simply copying - assume rest of the components are unchanged
+               sp(:,:,:,:) = s_primp(:,:,:,:)
+
                sp(:,:,:,rho_comp) = s_primp(:,:,:,rho_comp) * u0p(:,:,:,1)
                sp(:,:,:,rhoh_comp) = s_primp(:,:,:,rhoh_comp) * u0p(:,:,:,1)
                sp(:,:,:,spec_comp) = s_primp(:,:,:,spec_comp) * u0p(:,:,:,1)
@@ -495,6 +501,8 @@ contains
        real(kind=dp_t), intent(in) :: u0_1d(:,:)
        real(kind=dp_t), intent(in) :: s_prim(:,:,:)
 
+       ! intialise by simply copying - assume rest of the components are unchanged
+       s(:,:,:) = s_prim(:,:,:)
 
        s(:,:,rho_comp) = s_prim(:,:,rho_comp) * u0_1d(:,:)
        s(:,:,rhoh_comp) = s_prim(:,:,rhoh_comp) * u0_1d(:,:)
