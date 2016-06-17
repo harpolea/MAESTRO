@@ -1011,6 +1011,8 @@ contains
     integer    :: n,ng_s,nl
     integer    :: lo(dm_in), hi(dm_in), dm, nlevs
     logical    :: new_grid
+    type(multifab), allocatable :: s_prim(:)
+    type(multifab), allocatable :: u_prim(:)
 
     ! set time and dt
     time = ZERO
@@ -1040,6 +1042,7 @@ contains
     allocate(dSdt(max_levs),Source_old(max_levs),Source_new(max_levs))
     allocate(rho_omegadot2(max_levs),rho_Hnuc2(max_levs),rho_Hext(max_levs),thermal2(max_levs))
     allocate(alpha(max_levs),beta(max_levs),gam(max_levs),u0(max_levs),W(max_levs))
+
 
     ! Build the level 1 boxarray
     call box_build_2(bxs,lo,hi)
@@ -1318,6 +1321,16 @@ contains
 
     nlevs_radial = merge(1, nlevs, spherical .eq. 1)
 
+    allocate(s_prim(nlevs),u_prim(nlevs))
+
+    do n = 1,nlevs
+       call multifab_build(      u_prim(n), mla%la(n),    dm, nghost(uold(n)))
+       call multifab_build(      s_prim(n), mla%la(n), nscal, nghost(sold(n)))
+
+       call setval(    s_prim(n), ZERO, all=.true.)
+       call setval(    u_prim(n), ZERO, all=.true.)
+    end do
+
     ! build states
     do n = 1,nlevs
        call multifab_build(         uold(n), mla%la(n),    dm, ng_s)
@@ -1417,8 +1430,16 @@ contains
        !call make_grav_cell(grav_cell,D0_old)
        call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
+       !!!! This needs the primitive variables
+       do n=1,nlevs
+          ng_s = nghost(sold(n))
+          call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+          call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+       end do
+       call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
        ! call eos with r,p as input to recompute T,h
-       call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
+       call makeTHfromRhoP(s_prim,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
        ! set rhoh0 to be the average
        call average(mla,sold,Dh0_old,dx,rhoh_comp)
@@ -1429,6 +1450,10 @@ contains
     tempbar_init = tempbar
 
     call destroy(mba)
+    do n = 1, nlevs
+        call destroy(u_prim(n))
+        call destroy(s_prim(n))
+    enddo
 
   end subroutine initialize_with_adaptive_grids
 

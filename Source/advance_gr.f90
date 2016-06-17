@@ -186,7 +186,7 @@ contains
     real(kind=dp_t), allocatable ::         delta_chi_w0(:,:)
     real(kind=dp_t), pointer :: sp(:,:,:,:)
 
-    integer    :: i,n,comp,proj_type,nlevs,dm
+    integer    :: i,n,comp,proj_type,nlevs,dm,ng_s
     real(dp_t) :: halfdt
 
     ! need long int to store numbers greater than 2^31
@@ -203,6 +203,8 @@ contains
     real(kind=dp_t), allocatable :: times_local(:), times_global(:)
 
     type(bl_prof_timer), save :: bpt
+    type(multifab) :: s_prim(mla%nlevel)
+    type(multifab) :: u_prim(mla%nlevel)
 
     call build(bpt, "advance_timestep")
 
@@ -721,11 +723,21 @@ contains
        call multifab_copy_c(s2(n),pi_comp,  s1(n),pi_comp,  1,nghost(sold(n)))
     end do
 
+    ! FIXME: rho has somehow dropped by factor of 1e-6 here???
+
+    !!!! This needs the primitive variables
+    do n=1,nlevs
+       ng_s = nghost(snew(n))
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+    end do
+    call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
     ! now update temperature
     if (use_tfromp) then
-       call makeTfromRhoP(s2,p0_new,mla,the_bc_tower%bc_tower_array,dx)
+       call makeTfromRhoP(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     else
-       call makeTfromRhoH(s2,p0_new,mla,the_bc_tower%bc_tower_array,dx)
+       call makeTfromRhoH(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     end if
 
     if (use_thermal_diffusion) then

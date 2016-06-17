@@ -50,7 +50,7 @@ subroutine varden()
 
   integer    :: init_step,istep
   integer    :: istep_divu_iter,istep_init_iter
-  integer    :: i,n,r,numcell,dm,nlevs
+  integer    :: i,n,r,numcell,dm,nlevs,ng_s
   integer    :: last_plt_written,last_chk_written
   real(dp_t) :: smin,smax,smaxold,nuclear_dt_scalefac
   real(dp_t) :: umin,umax,vmin,vmax,wmin,wmax
@@ -67,6 +67,9 @@ subroutine varden()
   type(multifab), allocatable :: sponge(:)
   type(multifab), allocatable :: hgrhs(:)
   type(multifab), allocatable :: gamma1(:)
+
+  type(multifab), allocatable :: s_prim(:)
+  type(multifab), allocatable :: u_prim(:)
 
   type(multifab), pointer :: tag_mf(:)
 
@@ -340,6 +343,7 @@ subroutine varden()
   allocate(unew(nlevs),snew(nlevs),sponge(nlevs),hgrhs(nlevs))
   allocate(normal(nlevs))
   allocate(tag_mf(nlevs))
+  allocate(s_prim(nlevs),u_prim(nlevs))
 
   do n = 1,nlevs
      call multifab_build(      unew(n), mla%la(n),    dm, nghost(uold(n)))
@@ -350,12 +354,16 @@ subroutine varden()
         call multifab_build(normal(n), mla%la(n),    dm, 1)
      end if
      call multifab_build(    tag_mf(n), mla%la(n), 1, 0)
+     call multifab_build(      u_prim(n), mla%la(n),    dm, nghost(uold(n)))
+     call multifab_build(      s_prim(n), mla%la(n), nscal, nghost(sold(n)))
 
      call setval(      unew(n), ZERO, all=.true.)
      call setval(      snew(n), ZERO, all=.true.)
      call setval(    sponge(n), ONE,  all=.true.)
      call setval(     hgrhs(n), ZERO, all=.true.)
      call setval(    tag_mf(n), ZERO, all=.true.)
+     call setval(    s_prim(n), ZERO, all=.true.)
+     call setval(    u_prim(n), ZERO, all=.true.)
   end do
 
   ! Create normal now that we have defined center and dx
@@ -1042,12 +1050,20 @@ subroutine varden()
            ! enforce HSE
            call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
+           !!!! This needs the primitive variables
+           do n=1,nlevs
+              ng_s = nghost(sold(n))
+              call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+              call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+           end do
+           call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
            if (use_tfromp) then
               ! compute full state T = T(rho,p0,X)
-              call makeTfromRhoP(sold,p0_old,mla,the_bc_tower%bc_tower_array,dx)
+              call makeTfromRhoP(s_prim,p0_old,mla,the_bc_tower%bc_tower_array,dx)
            else
               ! compute full state T = T(rho,h,X)
-              call makeTfromRhoH(sold,p0_old,mla,the_bc_tower%bc_tower_array,dx)
+              call makeTfromRhoH(s_prim,p0_old,mla,the_bc_tower%bc_tower_array,dx)
            end if
 
            ! force tempbar to be the average of temp
@@ -1485,6 +1501,8 @@ subroutine varden()
      call destroy(beta(n))
      call destroy(gam(n))
      call destroy(u0(n))
+     call destroy(u_prim(n))
+     call destroy(s_prim(n))
   end do
 
   if(dm .eq. 3) then
