@@ -59,7 +59,7 @@ contains
 
 
   subroutine react_state(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc,&
-                         rho_Hext,p0,dt,dx,the_bc_level,chrls,u)
+                         rho_Hext,p0,dt,dx,the_bc_level,chrls,u,alpha)
 
     use probin_module, only: use_tfromp, do_heating, do_burning
     use variables, only: temp_comp, rhoh_comp, rho_comp,nscal
@@ -68,6 +68,7 @@ contains
     use rhoh_vs_t_module      , only : makeTfromRhoP, makeTfromRhoH
     use bl_constants_module   , only: ZERO
     use ml_restrict_fill_module
+    use metric_module, only: cons_to_prim
 
     type(ml_layout), intent(in   ) :: mla
     type(multifab) , intent(in   ) :: sold(:)
@@ -81,11 +82,14 @@ contains
     type(bc_level) , intent(in   ) :: the_bc_level(:)
     real(kind=dp_t) , intent(in   ) :: chrls(:,:,:,:,:,:,:)
     type(multifab)  , intent(in   ) :: u(:)
+    type(multifab), intent(in) :: alpha(:)
 
     ! Local
     type(bl_prof_timer), save :: bpt
+    type(multifab) :: s_prim(mla%nlevel)
+    type(multifab) :: u_prim(mla%nlevel)
 
-    integer :: n,nlevs,dm
+    integer :: n,nlevs,dm,ng_s
 
     call build(bpt, "react_state")
 
@@ -159,14 +163,28 @@ contains
        call ml_cc_restriction(rho_Hnuc(n-1)    ,rho_Hnuc(n)    ,mla%mba%rr(n-1,:))
     enddo
 
+    !!!! This needs the primitive variables
+    do n=1,nlevs
+       ng_s = nghost(snew(n))
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+    end do
+    call cons_to_prim(snew, u, alpha, s_prim, u_prim, mla,the_bc_level)
+
     ! now update temperature
     if (use_tfromp) then
-       call makeTfromRhoP(snew,p0,mla,the_bc_level,dx)
+       call makeTfromRhoP(s_prim,p0,mla,the_bc_level,dx)
     else
-       call makeTfromRhoH(snew,p0,mla,the_bc_level,dx)
+       call makeTfromRhoH(s_prim,p0,mla,the_bc_level,dx)
     end if
 
+    ! destroy stuff
     call destroy(bpt)
+
+    do n = 1, nlevs
+        call destroy(s_prim(n))
+        call destroy(u_prim(n))
+    enddo
 
   end subroutine react_state
 
@@ -888,9 +906,10 @@ contains
                 do n = 1, nspec
                    sumX = sumX + x_out(n)
                 enddo
-                if (abs(sumX - ONE) > reaction_sum_tol) then
-                   call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
-                endif
+                !FIXME: uncomment
+                !if (abs(sumX - ONE) > reaction_sum_tol) then
+                    !call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
+                !endif
 
                 ! Calculate gravity stuff
                 grav_term = 0.d0

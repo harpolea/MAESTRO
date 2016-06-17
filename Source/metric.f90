@@ -13,16 +13,19 @@ module metric_module
                                    MPI_MAX
     use particle_module
 
+    use define_bc_module
+    use ml_restrict_fill_module
+
     implicit none
 
     private :: root_find_on_me, Newton_Raphson
 
     public :: make_weak_field, inverse_metric, calcW, calcu0, &
-              g, christoffels, cons_to_prim, prim_to_cons
+              g, christoffels, cons_to_prim, prim_to_cons, prim_to_cons_1d
 
 contains
 
-    subroutine make_weak_field(alpha, beta, gam, mla,dx)
+    subroutine make_weak_field(alpha, beta, gam, mla,dx,the_bc_level)
         ! NOTE: gam is a vector as will assume it is a diagonal matrix
         ! Returns alpha, beta and gamma of weak field metric
         ! FIXME: I have no idea how to implement this in a useful way.
@@ -34,6 +37,7 @@ contains
         type(multifab) , intent(inout) :: gam(:)
         type(ml_layout), intent(inout) :: mla
         real(kind=dp_t), intent(in   ) :: dx(:,:)
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
         real(kind=dp_t), pointer :: alphap(:,:,:,:)
         real(kind=dp_t), pointer :: betap(:,:,:,:)
@@ -44,6 +48,7 @@ contains
         integer :: lo(mla%dim), hi(mla%dim)
 
         nlevs = mla%nlevel
+        dm = mla%dim
 
         do n = 1, nlevs
             do j = 1, nfabs(alpha(n))
@@ -68,6 +73,23 @@ contains
 
             enddo
         enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,alpha,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=alpha(1)%ng)
+        call ml_restrict_and_fill(nlevs,beta,mla%mba%rr,the_bc_level, &
+                                icomp=1, &
+                                bcomp=1, &
+                                nc=dm, &
+                                ng=beta(1)%ng)
+        call ml_restrict_and_fill(nlevs,gam,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=dm, &
+                                  ng=gam(1)%ng)
 
     end subroutine make_weak_field
 
@@ -102,7 +124,7 @@ contains
 
     end subroutine inverse_metric
 
-    subroutine calcW(alpha, beta, gam, u, mla, W_lor)
+    subroutine calcW(alpha, beta, gam, u, mla, W_lor,the_bc_level)
         ! Calculates the Lorentz factor
         use probin_module, only : c
 
@@ -110,9 +132,10 @@ contains
         type(multifab)    , intent(in)    :: beta(:)
         type(multifab)    , intent(in)    :: gam(:)
         type(multifab)    , intent(in)    :: u(:)
-        type(ml_layout)   , intent(inout) :: mla
+        type(ml_layout)   , intent(in) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
-        type(multifab)    , intent(in)    :: W_lor(:)
+        type(multifab)    , intent(inout)    :: W_lor(:)
 
         real(kind=dp_t), pointer:: alphap(:,:,:,:)
         real(kind=dp_t), pointer:: betap(:,:,:,:)
@@ -129,6 +152,7 @@ contains
         enddo
 
         nlevs = mla%nlevel
+        dm = mla%dim
 
         do n = 1, nlevs
             do k = 1, nfabs(alpha(n))
@@ -153,9 +177,16 @@ contains
             enddo
         enddo
 
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,W_lor,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=W_lor(1)%ng)
+
     end subroutine calcW
 
-    subroutine calcu0(alpha, beta, gam, W_lor, u0, mla)
+    subroutine calcu0(alpha, beta, gam, W_lor, u0, mla,the_bc_level)
         ! Calculates timelike coordinate of 3+1 velocity
         ! using Lorentz factor and alpha:
         ! W = alpha * u0
@@ -166,15 +197,17 @@ contains
         type(multifab)    , intent(in)    :: W_lor(:)
         type(multifab)   , intent(inout) :: u0(:)
         type(ml_layout)   , intent(inout) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
         real(kind=dp_t), pointer :: alphap(:,:,:,:)
         real(kind=dp_t), pointer :: betap(:,:,:,:)
         real(kind=dp_t), pointer :: gamp(:,:,:,:)
         real(kind=dp_t), pointer :: Wp(:,:,:,:)
         real(kind=dp_t), pointer :: u0p(:,:,:,:)
-        integer     :: nlevs, n, i
+        integer     :: nlevs, n, i, dm
 
         nlevs = mla%nlevel
+        dm = mla%dim
 
         do n = 1, nlevs
             do i = 1, nfabs(alpha(n))
@@ -187,6 +220,13 @@ contains
                 u0p(:,:,:,1) = Wp(:,:,:,1) / alphap(:,:,:,1)
             enddo
         enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,u0,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=u0(1)%ng)
 
     end subroutine calcu0
 
@@ -300,17 +340,18 @@ contains
 
     end subroutine christoffels
 
-    subroutine cons_to_prim(s, u, alpha, s_prim, u_prim, mla)
-        use variables, only: rho_comp, rhoh_comp, spec_comp
+    subroutine cons_to_prim(s, u, alpha, s_prim, u_prim, mla,the_bc_level)
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
         ! FIXME: need to import thermal gamma
         use probin_module, only : gamm_therm
 
         type(multifab), intent(in) :: s(:)
         type(multifab), intent(in) :: u(:)
         type(multifab), intent(in) :: alpha(:)
-        type(multifab), intent(in) :: s_prim(:)
-        type(multifab), intent(in) :: u_prim(:)
-        type(ml_layout)   , intent(inout) :: mla
+        type(multifab), intent(inout) :: s_prim(:)
+        type(multifab), intent(inout) :: u_prim(:)
+        type(ml_layout)   , intent(in) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
         real(kind=dp_t), pointer ::  sp(:,:,:,:)
         real(kind=dp_t), pointer ::  up(:,:,:,:)
@@ -320,30 +361,40 @@ contains
 
         real(kind=dp_t) :: pmin, pmax, pbar, u0
 
-        integer :: i,j,k,m,n,nlevs,lo(mla%dim),hi(mla%dim)
+        integer :: i,j,k,l,m,n,nlevs,lo(mla%dim),hi(mla%dim),dm
         logical :: fail
 
         nlevs = mla%nlevel
+        dm = mla%dim
 
         do n=1,nlevs
            do m=1,nfabs(s(n))
+
                sp => dataptr(s(n), m)
                up => dataptr(u(n), m)
                alphap => dataptr(alpha(n), m)
                s_primp => dataptr(s_prim(n), m)
                u_primp => dataptr(u_prim(n), m)
-               lo =  lwb(get_box(s(n), i))
-               hi =  upb(get_box(s(n), i))
+               lo =  lwb(get_box(s(n), m))
+               hi =  upb(get_box(s(n), m))
 
-               ! intialise by simply copying - assume rest of the components are unchanged
+               ! initialise by simply copying - assume rest of the components are unchanged
                s_primp(:,:,:,:) = sp(:,:,:,:)
 
                do k = lo(3), hi(3)
                    do j = lo(2), hi(2)
                        do i = lo(1), hi(1)
-                           pmin = 0.d0
-                           pmax = 0.d0
-                           pbar = 0.d0
+                           !pmin = (Dh - D) * (gamma - 1.) / gamma
+                           !pmax = (gamma - 1.) * Dh
+                           pmin = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / gamm_therm
+                           if (pmin < 0.d0) then
+                               pmin = 0.d0
+                           endif
+                           pmax = (gamm_therm - 1.d0) * sp(i,j,k,rhoh_comp)
+                           pbar = 0.5d0 * (pmin + pmax)
+
+
+                           !print *, 'hi'
 
                            call Newton_Raphson(pmin, pmax, pbar, root_find_on_me, &
                            sp(i,j,k,rho_comp), up(i,j,k,:), sp(i,j,k,rhoh_comp), alphap(i,j,k,1), fail)
@@ -352,13 +403,31 @@ contains
 
                            s_primp(i,j,k,rho_comp) = sp(i,j,k,rho_comp) / u0
                            s_primp(i,j,k,rhoh_comp) = sp(i,j,k,rhoh_comp) / u0
-                           s_primp(i,j,k,spec_comp) = sp(i,j,k,spec_comp) / u0
+                           do l = 0, nspec-1
+                               s_primp(i,j,k,spec_comp+l) = sp(i,j,k,spec_comp+l) / u0
+                           enddo
                            u_primp(i,j,k,:) = up(i,j,k,:) * u0
                        enddo
                    enddo
                enddo
            enddo
        enddo
+
+       !print *, 'sprim', s_primp(:,:,:,1)
+
+       ! fill ghosts
+       call ml_restrict_and_fill(nlevs,s_prim,mla%mba%rr,the_bc_level, &
+                                 icomp=rho_comp, &
+                                 bcomp=dm+rho_comp, &
+                                 nc=nscal, &
+                                 ng=s_prim(1)%ng)
+
+       call ml_restrict_and_fill(nlevs,u_prim,mla%mba%rr,the_bc_level, &
+                                 icomp=1, &
+                                 bcomp=1, &
+                                 nc=dm, &
+                                 ng=u_prim(1)%ng)
+
 
 
     end subroutine cons_to_prim
@@ -450,17 +519,16 @@ contains
 
     end subroutine Newton_Raphson
 
-    subroutine prim_to_cons(s, u, u0, s_prim, u_prim, mla)
-        use variables, only: rho_comp, rhoh_comp, spec_comp
-        ! FIXME: need to import thermal gamma
-        use probin_module, only : gamm_therm
+    subroutine prim_to_cons(s, u, u0, s_prim, u_prim, mla,the_bc_level)
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec,nscal
 
         type(multifab), intent(inout) :: s(:)
-        type(multifab), intent(in) :: u(:)
+        type(multifab), intent(inout) :: u(:)
         type(multifab), intent(in) :: u0(:)
         type(multifab), intent(in) :: s_prim(:)
-        type(multifab), intent(inout) :: u_prim(:)
+        type(multifab), intent(in) :: u_prim(:)
         type(ml_layout)   , intent(inout) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
         real(kind=dp_t), pointer ::  sp(:,:,:,:)
         real(kind=dp_t), pointer ::  up(:,:,:,:)
@@ -468,9 +536,10 @@ contains
         real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
         real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
 
-        integer :: i,m,n,nlevs
+        integer :: i,m,n,nlevs,dm
 
         nlevs = mla%nlevel
+        dm = mla%dim
 
         do n=1,nlevs
            do m=1,nfabs(s(n))
@@ -485,31 +554,49 @@ contains
 
                sp(:,:,:,rho_comp) = s_primp(:,:,:,rho_comp) * u0p(:,:,:,1)
                sp(:,:,:,rhoh_comp) = s_primp(:,:,:,rhoh_comp) * u0p(:,:,:,1)
-               sp(:,:,:,spec_comp) = s_primp(:,:,:,spec_comp) * u0p(:,:,:,1)
+               do i = 0, nspec-1
+                   sp(:,:,:,spec_comp+i) = s_primp(:,:,:,spec_comp+i) * u0p(:,:,:,1)
+               enddo
                do i = 1, mla%dim
                    up(:,:,:,i) = u_primp(:,:,:,i) / u0p(:,:,:,1)
                enddo
            enddo
        enddo
 
+       ! fill ghosts
+       call ml_restrict_and_fill(nlevs,s,mla%mba%rr,the_bc_level, &
+                                 icomp=rho_comp, &
+                                 bcomp=dm+rho_comp, &
+                                 nc=nscal, &
+                                 ng=s(1)%ng)
+
+       call ml_restrict_and_fill(nlevs,u,mla%mba%rr,the_bc_level, &
+                                 icomp=1, &
+                                 bcomp=1, &
+                                 nc=dm, &
+                                 ng=u(1)%ng)
+
 
    end subroutine prim_to_cons
 
    subroutine prim_to_cons_1d(s, u0_1d, s_prim)
-       use variables, only: rho_comp, rhoh_comp, spec_comp
-       ! FIXME: need to import thermal gamma
-       use probin_module, only : gamm_therm
+       use variables, only: rho_comp, rhoh_comp, spec_comp, nspec
 
        real(kind=dp_t), intent(inout) :: s(:,:,:)
        real(kind=dp_t), intent(in) :: u0_1d(:,:)
        real(kind=dp_t), intent(in) :: s_prim(:,:,:)
+
+       integer :: i
 
        ! intialise by simply copying - assume rest of the components are unchanged
        s(:,:,:) = s_prim(:,:,:)
 
        s(:,:,rho_comp) = s_prim(:,:,rho_comp) * u0_1d(:,:)
        s(:,:,rhoh_comp) = s_prim(:,:,rhoh_comp) * u0_1d(:,:)
-       s(:,:,spec_comp) = s_prim(:,:,spec_comp) * u0_1d(:,:)
+
+       do i = 0, nspec-1
+           s(:,:,spec_comp+i) = s_prim(:,:,spec_comp+i) * u0_1d(:,:)
+       enddo
 
 
   end subroutine prim_to_cons_1d

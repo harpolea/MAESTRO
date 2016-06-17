@@ -873,7 +873,7 @@ contains
     call init_radial(nlevs,mba)
 
     ! make metric stuff
-    call make_weak_field(alpha,beta,gam,mla,dx)
+    call make_weak_field(alpha,beta,gam,mla,dx,the_bc_tower%bc_tower_array)
     allocate(chrls     (nlevs,0:dm,0:dm,0:dm,0:extent(mla%mba%pd(nlevs),1),0:extent(mla%mba%pd(nlevs),2),0:nr_fine-1))
     call christoffels(alpha,beta,gam,chrls,mla)
 
@@ -896,8 +896,8 @@ contains
 
     call initveldata(uold,sprim0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
-    call calcW(alpha, beta, gam, uold, mla, W)
-    call calcu0(alpha, beta, gam, W, u0, mla)
+    call calcW(alpha, beta, gam, uold, mla, W,the_bc_tower%bc_tower_array)
+    call calcu0(alpha, beta, gam, W, u0, mla,the_bc_tower%bc_tower_array)
     ! set u0_1d to be average
     call average(mla,u0,u0_1d,dx,1)
 
@@ -1370,16 +1370,16 @@ contains
     !print *, 'MAKE WEAK FIELD'
 
     ! make metric stuff
-    call make_weak_field(alpha,beta,gam,mla,dx(:,:))
+    call make_weak_field(alpha,beta,gam,mla,dx(:,:),the_bc_tower%bc_tower_array)
     allocate(chrls     (max_levs,0:dm,0:dm,0:dm, &
     0:extent(mla%mba%pd(max_levs),1),0:extent(mla%mba%pd(max_levs),2),0:nr_fine-1))
     call christoffels(alpha,beta,gam,chrls,mla)
 
     call initveldata(uold,sprim0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
-    call calcW(alpha, beta, gam, uold, mla, W)
+    call calcW(alpha, beta, gam, uold, mla, W,the_bc_tower%bc_tower_array)
 
-    call calcu0(alpha, beta, gam, W, u0, mla)
+    call calcu0(alpha, beta, gam, W, u0, mla,the_bc_tower%bc_tower_array)
     ! set u0_1d to be average
     call average(mla,u0,u0_1d,dx,1)
 

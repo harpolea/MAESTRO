@@ -22,7 +22,7 @@ module firstdt_module
 
 contains
 
-  subroutine firstdt(mla,the_bc_level,u,gpi,s,divU,rho0,Dh0,p0,grav,gamma1bar, &
+  subroutine firstdt(mla,the_bc_level,u,gpi,s,divU,rho0,Dh0,p0,dpdr,gamma1bar, &
                      dx,cflfac,dt,u0,chrls,gam)
 
     use geometry, only: nlevs_radial, spherical, nr_fine
@@ -40,7 +40,7 @@ contains
     real(kind=dp_t), intent(in   ) ::      rho0(:,0:)
     real(kind=dp_t), intent(in   ) ::      Dh0(:,0:)
     real(kind=dp_t), intent(in   ) ::        p0(:,0:)
-    real(kind=dp_t), intent(in   ) ::      grav(:,0:)
+    real(kind=dp_t), intent(in   ) ::      dpdr(:,0:)
     real(kind=dp_t), intent(in   ) :: gamma1bar(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     real(kind=dp_t), intent(in   ) :: cflfac
@@ -113,7 +113,7 @@ contains
     is_final_update = .false.
     call mk_vel_force(force,is_final_update, &
                       u,umac_dummy,w0_dummy,w0mac_dummy,gpi,s,rho_comp,rhoh_comp,normal_dummy, &
-                      rho0,Dh0,grav,dx,w0_force_dummy,w0_force_cart_dummy,the_bc_level,mla,.false.,u0,chrls,gam)
+                      rho0,Dh0,dpdr,dx,w0_force_dummy,w0_force_cart_dummy,the_bc_level,mla,.false.,u0,chrls,gam)
 
     do n=1,nlevs
        call destroy(w0_force_cart_dummy(n))

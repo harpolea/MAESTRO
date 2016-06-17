@@ -35,7 +35,7 @@ contains
                               dpdr_cell_old,dx,dt,dtold,the_bc_tower, &
                               dSdt,Source_old,Source_new,etarho_ec,etarho_cc, &
                               psi,sponge,hgrhs,tempbar_init,particles,&
-                              u0,chrls,gam)
+                              u0,chrls,gam,alpha)
 
     use bl_prof_module              , only : bl_prof_timer, build, destroy
     use      pre_advance_module     , only : advance_premac
@@ -124,6 +124,7 @@ contains
     type(multifab),  intent(inout) :: u0(:)
     real(dp_t)    ,  intent(inout) :: chrls(:,:,:,:,:,:,:)
     type(multifab),  intent(inout) :: gam(:)
+    type(multifab),  intent(inout) :: alpha(:)
 
     ! local
     type(multifab) ::             Dhalf(mla%nlevel)
@@ -285,7 +286,7 @@ contains
     end do
 
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot1,rho_Hnuc1,rho_Hext,p0_old,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,uold)
+                     the_bc_tower%bc_tower_array,chrls,uold,alpha)
 
     do n=1,nlevs
        call destroy(rho_omegadot1(n))
@@ -743,7 +744,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,uold)
+                     the_bc_tower%bc_tower_array,chrls,uold,alpha)
 
     do n=1,nlevs
        call destroy(s2(n))
@@ -1260,7 +1261,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,u0)
+                     the_bc_tower%bc_tower_array,chrls,u0,alpha)
 
     do n=1,nlevs
        call destroy(s2(n))

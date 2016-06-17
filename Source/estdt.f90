@@ -27,7 +27,7 @@ module estdt_module
 contains
 
   subroutine estdt(mla,the_bc_tower,u,s,gpi,divU,dSdt,w0,rho0,Dh0,p0,gamma1bar, &
-                   grav,dx,cflfac,dt,u0,chrls,gam)
+                   dpdr,dx,cflfac,dt,u0,chrls,gam)
 
     use bl_prof_module
     use geometry, only: spherical, nlevs_radial, nr_fine
@@ -49,7 +49,7 @@ contains
     real(kind=dp_t), intent(in   ) :: Dh0(:,0:)
     real(kind=dp_t), intent(in   ) :: p0(:,0:)
     real(kind=dp_t), intent(in   ) :: gamma1bar(:,0:)
-    real(kind=dp_t), intent(in   ) :: grav(:,0:)
+    real(kind=dp_t), intent(in   ) :: dpdr(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     real(kind=dp_t), intent(in   ) :: cflfac
     real(kind=dp_t), intent(inout) :: dt
@@ -133,7 +133,7 @@ contains
     is_final_update = .false.
     call mk_vel_force(force,is_final_update, &
                       u,umac_dummy,w0,w0mac,gpi,s,rho_comp,rhoh_comp,normal_dummy, &
-                      rho0,Dh0,grav,dx,w0_force_dummy,w0_force_cart_dummy, &
+                      rho0,Dh0,dpdr,dx,w0_force_dummy,w0_force_cart_dummy, &
                       the_bc_tower%bc_tower_array,mla,.false.,u0,chrls,gam)
 
     do n=1,nlevs

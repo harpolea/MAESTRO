@@ -21,7 +21,7 @@ contains
 
   subroutine mk_vel_force(vel_force,is_final_update, &
                           uold,umac,w0,w0mac,gpi,s,index_rho,index_Dh,normal, &
-                          D0,Dh0,grav,dx,w0_force,w0_force_cart,the_bc_level,mla, &
+                          D0,Dh0,dpdr,dx,w0_force,w0_force_cart,the_bc_level,mla, &
                           do_add_utilde_force,u0,chrls,gam)
 
     ! index_rho refers to the index into s where the density lives.
@@ -50,7 +50,7 @@ contains
     integer                        :: index_Dh
     real(kind=dp_t), intent(in   ) :: D0(:,0:)
     real(kind=dp_t), intent(in   ) :: Dh0(:,0:)
-    real(kind=dp_t), intent(in   ) :: grav(:,0:)
+    real(kind=dp_t), intent(in   ) :: dpdr(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     real(kind=dp_t), intent(in   ) :: w0_force(:,0:)
     type(multifab) , intent(in   ) :: w0_force_cart(:)
@@ -151,7 +151,7 @@ contains
              call mk_vel_force_1d(fp(:,1,1,1),ng_f,gpp(:,1,1,1),ng_gp, &
                                   rp(:,1,1,index_rho),ng_s, &
                                   ump(:,1,1,1), ng_um, &
-                                  D0(n,:),grav(n,:),w0(n,:),w0_force(n,:),lo,hi,n, &
+                                  D0(n,:),dpdr(n,:),w0(n,:),w0_force(n,:),lo,hi,n, &
                                   do_add_utilde_force)
 
           case (2)
@@ -159,7 +159,7 @@ contains
              call mk_vel_force_2d(fp(:,:,1,:),ng_f,gpp(:,:,1,:),ng_gp, &
                                   rp(:,:,1,index_rho),ng_s, &
                                   vmp(:,:,1,1), ng_um, &
-                                  D0(n,:),grav(n,:),w0(n,:),w0_force(n,:),lo,hi,n, &
+                                  D0(n,:),dpdr(n,:),w0(n,:),w0_force(n,:),lo,hi,n, &
                                   do_add_utilde_force)
 
           case (3)
@@ -193,7 +193,7 @@ contains
                                           w0cp(:,:,:,:),ng_wc,gw0p(:,:,:,1),ng_gw, &
                                           w0xp(:,:,:,1),w0yp(:,:,:,1),ng_wm, &
                                           gpp(:,:,:,:),ng_gp,rp(:,:,:,index_rho),ng_s, &
-                                          D0(1,:),grav(1,:),w0p(:,:,:,:),ng_w,lo,hi,dx(n,:), &
+                                          D0(1,:),dpdr(1,:),w0p(:,:,:,:),ng_w,lo,hi,dx(n,:), &
                                           do_add_utilde_force)
 
              else
@@ -202,7 +202,7 @@ contains
                                           ump(:,:,:,1),vmp(:,:,:,1),wmp(:,:,:,1),ng_um, &
                                           w0(n,:), &
                                           gpp(:,:,:,:),ng_gp,rp(:,:,:,index_rho),rp(:,:,:,index_Dh),ng_s, &
-                                          D0(n,:),Dh0(n,:),grav(n,:),w0_force(n,:),lo,hi,n, &
+                                          D0(n,:),Dh0(n,:),dpdr(n,:),w0_force(n,:),lo,hi,n, &
                                           do_add_utilde_force,u0p(:,:,:,1), &
                                           ng_u0,chrls(n,:,:,:,:,:,:),gamp(:,:,:,:))
              end if
@@ -231,7 +231,7 @@ contains
   subroutine mk_vel_force_1d(vel_force,ng_f,gpi,ng_gp, &
                              D,ng_s, &
                              umac,ng_um, &
-                             D0,grav,w0,w0_force,lo,hi,n, &
+                             D0,dpdr,w0,w0_force,lo,hi,n, &
                              do_add_utilde_force)
 
     use geometry, only: nr, dr
@@ -244,7 +244,7 @@ contains
     real(kind=dp_t), intent(in   ) ::     D(lo(1)-ng_s :)
     real(kind=dp_t), intent(in   ) ::    umac(lo(1)-ng_um:)
     real(kind=dp_t), intent(in   ) :: D0(0:)
-    real(kind=dp_t), intent(in   ) :: grav(0:)
+    real(kind=dp_t), intent(in   ) :: dpdr(0:)
     real(kind=dp_t), intent(in   ) :: w0(0:), w0_force(0:)
     logical        , intent(in   ) :: do_add_utilde_force
     integer        , intent(in   ) :: n
@@ -264,7 +264,7 @@ contains
 
        ! note: if use_alt_energy_fix = T, then gphi is already weighted
        ! by beta_0
-       vel_force(i) =  Dpert / D(i) * grav(i) - gpi(i) / D(i) - w0_force(i)
+       vel_force(i) =  dpdr(i) / D(i)  - gpi(i) / D(i) - w0_force(i)
 
     end do
 
@@ -289,7 +289,7 @@ contains
   subroutine mk_vel_force_2d(vel_force,ng_f,gpi,ng_gp, &
                              D,ng_s, &
                              vmac, ng_um, &
-                             D0,grav,w0,w0_force,lo,hi,n, &
+                             D0,dpdr,w0,w0_force,lo,hi,n, &
                              do_add_utilde_force)
 
     use geometry, only: nr, dr
@@ -302,7 +302,7 @@ contains
     real(kind=dp_t), intent(in   ) ::     D(lo(1)-ng_s :,lo(2)-ng_s :)
     real(kind=dp_t), intent(in   ) ::    vmac(lo(1)-ng_um:,lo(2)-ng_um:)
     real(kind=dp_t), intent(in   ) :: D0(0:)
-    real(kind=dp_t), intent(in   ) :: grav(0:)
+    real(kind=dp_t), intent(in   ) :: dpdr(0:)
     real(kind=dp_t), intent(in   ) :: w0(0:),w0_force(0:)
     logical        , intent(in   ) :: do_add_utilde_force
 
@@ -324,7 +324,7 @@ contains
           ! note: if use_alt_energy_fix = T, then gphi is already weighted
           ! by beta_0
           vel_force(i,j,1) = - gpi(i,j,1) / D(i,j)
-          vel_force(i,j,2) =  Dpert / D(i,j) * grav(j) &
+          vel_force(i,j,2) =  dpdr(j) / D(i,j)  &
                - gpi(i,j,2) / D(i,j) - w0_force(j)
        end do
     end do
@@ -356,7 +356,7 @@ contains
                                   umac,vmac,wmac,ng_um, &
                                   w0, &
                                   gpi,ng_gp,D,Dh,ng_s, &
-                                  D0,Dh0,grav,w0_force,lo,hi,n, &
+                                  D0,Dh0,dpdr,w0_force,lo,hi,n, &
                                   do_add_utilde_force,u0,ng_u0,chrls,gam)
 
     use geometry,  only: sin_theta, cos_theta, omega, nr, dr
@@ -377,7 +377,7 @@ contains
     real(kind=dp_t), intent(in   ) ::       Dh(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :)
     real(kind=dp_t), intent(in   ) :: D0(0:)
     real(kind=dp_t), intent(in   ) :: Dh0(0:)
-    real(kind=dp_t), intent(in   ) :: grav(0:)
+    real(kind=dp_t), intent(in   ) :: dpdr(0:)
     real(kind=dp_t), intent(in   ) :: w0_force(0:)
     logical        , intent(in   ) :: do_add_utilde_force
     real(kind=dp_t), intent(in   ) ::      u0(lo(1)-ng_u0:,lo(2)-ng_u0:,lo(3)-ng_u0:)
@@ -497,9 +497,9 @@ contains
              vel_force(i,j,k,2) = -coriolis_term(2) - centrifugal_term(2) - &
                   gpi(i,j,k,2) / (Dh(i,j,k) * u0(i,j,k)) + gr_term(2)
 
-             vel_force(i,j,k,3) = -coriolis_term(3) - centrifugal_term(3) + &
-                  ( Dpert * grav(k) - gpi(i,j,k,3) ) / (Dh(i,j,k) * u0(i,j,k)) &
-                  - w0_force(k) + gr_term(3)
+            vel_force(i,j,k,3) = -coriolis_term(3) - centrifugal_term(3) + &
+                 (dpdr(k) - gpi(i,j,k,3) ) / (Dh(i,j,k) * u0(i,j,k)) &
+                 - w0_force(k) + gr_term(3)
 
           end do
        end do
@@ -537,7 +537,7 @@ contains
                                   w0_cart,ng_wc,gradw0_cart,ng_gw, &
                                   w0macx,w0macy,ng_wm, &
                                   gpi,ng_gp,D,ng_s, &
-                                  D0,grav,w0_force_cart,ng_w,lo,hi,dx, &
+                                  D0,dpdr,w0_force_cart,ng_w,lo,hi,dx, &
                                   do_add_utilde_force)
 
     use fill_3d_module
@@ -561,14 +561,14 @@ contains
     real(kind=dp_t), intent(in   ) ::        D(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :)
     real(kind=dp_t), intent(in   ) :: w0_force_cart(lo(1)-ng_w:,lo(2)-ng_w:,lo(3)-ng_w:,:)
     real(kind=dp_t), intent(in   ) :: D0(0:)
-    real(kind=dp_t), intent(in   ) :: grav(0:)
+    real(kind=dp_t), intent(in   ) :: dpdr(0:)
     real(kind=dp_t), intent(in   ) ::   dx(:)
     logical        , intent(in   ) :: do_add_utilde_force
 
     integer         :: i,j,k
 
     real(kind=dp_t), allocatable :: D0_cart(:,:,:,:)
-    real(kind=dp_t), allocatable :: grav_cart(:,:,:,:)
+    real(kind=dp_t), allocatable :: dpdr_cart(:,:,:,:)
 
     real(kind=dp_t) :: Dpert
     real(kind=dp_t) :: xx, yy, zz
@@ -577,12 +577,12 @@ contains
     real(kind=dp_t) :: Ut_dot_er
 
     allocate(D0_cart(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1))
-    allocate(grav_cart(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),3))
+    allocate(dpdr_cart(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),3))
 
     vel_force = ZERO
 
     call put_1d_array_on_cart_3d_sphr(.false.,.false.,D0,D0_cart,lo,hi,dx,0)
-    call put_1d_array_on_cart_3d_sphr(.false.,.true.,grav,grav_cart,lo,hi,dx,0)
+    call put_1d_array_on_cart_3d_sphr(.false.,.true.,dpdr,dpdr_cart,lo,hi,dx,0)
 
     !$OMP PARALLEL DO PRIVATE(i,j,k,xx,yy,zz,Dpert,centrifugal_term,coriolis_term)
     do k = lo(3),hi(3)
@@ -647,15 +647,15 @@ contains
              ! note: if use_alt_energy_fix = T, then gphi is already weighted
              ! by beta_0
              vel_force(i,j,k,1) = -coriolis_term(1) - centrifugal_term(1) + &
-                  ( Dpert * grav_cart(i,j,k,1) - gpi(i,j,k,1) ) / D(i,j,k) &
+                  ( dpdr_cart(i,j,k,1) - gpi(i,j,k,1) ) / D(i,j,k) &
                   - w0_force_cart(i,j,k,1)
 
              vel_force(i,j,k,2) = -coriolis_term(2) - centrifugal_term(2) + &
-                  ( Dpert * grav_cart(i,j,k,2) - gpi(i,j,k,2) ) / D(i,j,k) &
+                  ( dpdr_cart(i,j,k,2) - gpi(i,j,k,2) ) / D(i,j,k) &
                   - w0_force_cart(i,j,k,2)
 
              vel_force(i,j,k,3) = -coriolis_term(3) - centrifugal_term(3) + &
-                  ( Dpert * grav_cart(i,j,k,3) - gpi(i,j,k,3) ) / D(i,j,k) &
+                  ( dpdr_cart(i,j,k,3) - gpi(i,j,k,3) ) / D(i,j,k) &
                   - w0_force_cart(i,j,k,3)
 
           end do
@@ -687,7 +687,7 @@ contains
 
     endif
 
-    deallocate(D0_cart,grav_cart)
+    deallocate(D0_cart,dpdr_cart)
 
   end subroutine mk_vel_force_3d_sphr
 

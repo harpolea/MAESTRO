@@ -11,7 +11,7 @@ module rhoh_vs_t_module
   private
 
   public :: makeHfromRhoT_edge, makeTfromRhoH, makeTfromRhoP, makePfromRhoH, makeTHfromRhoP
-  
+
 contains
 
   !============================================================================
@@ -31,7 +31,7 @@ contains
     use network
     use fill_3d_module
     use pred_parameters
-    
+
     type(multifab) , intent(in   ) :: u(:)
     type(multifab) , intent(inout) :: sedge(:,:)
     real(kind=dp_t), intent(in   ) :: rho0_old(:,0:)
@@ -49,7 +49,7 @@ contains
     type(bc_level) , intent(in   ) :: the_bc_level(:)
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     type(ml_layout), intent(in   ) :: mla
-    
+
     ! local
     integer :: i,r,n,ng_u,ng_se,ng_r0,ng_rh0,ng_t0,dm,nlevs
     integer :: lo(mla%dim),hi(mla%dim)
@@ -163,7 +163,7 @@ contains
     end if
 
     call destroy(bpt)
-    
+
   end subroutine makeHfromRhoT_edge
 
   !----------------------------------------------------------------------------
@@ -186,10 +186,10 @@ contains
     real(kind=dp_t), intent(inout) :: sx(lo(1)-ng_se:,:)
     real(kind=dp_t), intent(in   ) :: rho0_edge_old(0:),rhoh0_edge_old(0:),t0_edge_old(0:)
     real(kind=dp_t), intent(in   ) :: rho0_edge_new(0:),rhoh0_edge_new(0:),t0_edge_new(0:)
- 
+
     integer :: i
     real(kind=dp_t) :: t0_edge
-    
+
     integer :: pt_index(MAX_SPACEDIM)
     type(eos_t) :: eos_state
 
@@ -206,22 +206,22 @@ contains
 
        ! get edge-centered density and species
        if (species_pred_type .eq. predict_rhoprime_and_X) then
-          
+
           ! interface states are rho' and X
           eos_state%rho = sx(i,rho_comp) + &
                HALF * (rho0_edge_old(i) + rho0_edge_new(i))
-          
+
           eos_state%xn(:) = sx(i,spec_comp:spec_comp+nspec-1)
-          
+
        else if (species_pred_type .eq. predict_rhoX) then
-          
+
           ! interface states are rho and (rho X)
           eos_state%rho = sx(i,rho_comp)
-          
+
           eos_state%xn(:) = sx(i,spec_comp:spec_comp+nspec-1)/eos_state%rho
-          
+
        else if (species_pred_type .eq. predict_rho_and_X) then
-          
+
           ! interface states are rho and X
           eos_state%rho = sx(i,rho_comp)
 
@@ -255,7 +255,7 @@ contains
                                    rho0_new,rhoh0_new,t0_new, &
                                    rho0_edge_new,rhoh0_edge_new,t0_edge_new, &
                                    lo,hi)
-    
+
     use bl_constants_module
     use variables,     only: rho_comp, temp_comp, spec_comp, rhoh_comp
     use eos_module,    only: eos, eos_input_rt
@@ -289,51 +289,51 @@ contains
           else
              eos_state%T = max(sx(i,j,temp_comp),small_temp)
           end if
-          
+
           ! get edge-centered density and species
           if (species_pred_type .eq. predict_rhoprime_and_X) then
-             
+
              ! interface states are rho' and X
              eos_state%rho  = sx(i,j,rho_comp) + &
                   HALF * (rho0_old(j) + rho0_new(j))
-             
+
              eos_state%xn(:) = sx(i,j,spec_comp:spec_comp+nspec-1)
-             
+
           else if (species_pred_type .eq. predict_rhoX) then
-             
+
              ! interface states are rho and (rho X)
              eos_state%rho = sx(i,j,rho_comp)
-              
+
              eos_state%xn(:) = sx(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
-              
+
           else if (species_pred_type .eq. predict_rho_and_X) then
-              
+
              ! interface states are rho and X
              eos_state%rho = sx(i,j,rho_comp)
-             
+
              eos_state%xn(:) = sx(i,j,spec_comp:spec_comp+nspec-1)
-              
+
           endif
-           
+
           pt_index(:) = (/i, j, -1/)
-          
+
           call eos(eos_input_rt, eos_state, pt_index)
-           
+
           if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                enthalpy_pred_type .eq. predict_Tprime_then_h) then
              sx(i,j,rhoh_comp) = eos_state%h
-              
+
           else if (enthalpy_pred_type .eq. predict_T_then_rhohprime) then
              sx(i,j,rhoh_comp) = eos_state%rho*eos_state%h - HALF*(rhoh0_old(j)+rhoh0_new(j))
           end if
-          
+
        enddo
     enddo
-     
+
     ! y-edge
     do j = lo(2), hi(2)+1
        do i = lo(1), hi(1)
-           
+
           ! get edge-centered temperature
           if (enthalpy_pred_type .eq. predict_Tprime_then_h) then
              t0_edge = HALF*(t0_edge_old(j)+t0_edge_new(j))
@@ -341,51 +341,51 @@ contains
           else
              eos_state%T = max(sy(i,j,temp_comp),small_temp)
           end if
-          
+
           ! get edge-centered density and species
           if (species_pred_type .eq. predict_rhoprime_and_X) then
-             
+
              ! interface states are rho' and X
              eos_state%rho  = sy(i,j,rho_comp) + &
                   HALF * (rho0_edge_old(j) + rho0_edge_new(j))
-             
+
              eos_state%xn(:) = sy(i,j,spec_comp:spec_comp+nspec-1)
 
           else if (species_pred_type .eq. predict_rhoX) then
-              
+
              ! interface states are rho and (rho X)
              eos_state%rho = sy(i,j,rho_comp)
-              
+
              eos_state%xn(:) = sy(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
-              
+
           else if (species_pred_type .eq. predict_rho_and_X) then
-              
+
              ! interface states are rho and X
              eos_state%rho = sy(i,j,rho_comp)
-              
+
              eos_state%xn(:) = sy(i,j,spec_comp:spec_comp+nspec-1)
-              
+
           endif
 
 
           pt_index(:) = (/i, j, -1/)
-          
+
           call eos(eos_input_rt, eos_state, pt_index)
-           
+
           if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                enthalpy_pred_type .eq. predict_Tprime_then_h) then
-             sy(i,j,rhoh_comp) = eos_state%h 
-              
+             sy(i,j,rhoh_comp) = eos_state%h
+
           else if (enthalpy_pred_type .eq. predict_T_then_rhohprime) then
              sy(i,j,rhoh_comp) = eos_state%rho*eos_state%h &
                   - HALF*(rhoh0_edge_old(j) + rhoh0_edge_new(j))
           end if
-           
+
        enddo
     enddo
-    
+
   end subroutine makeHfromRhoT_edge_2d
-  
+
   !----------------------------------------------------------------------------
   ! makeHfromRhoT_edge_3d_cart
   !----------------------------------------------------------------------------
@@ -412,7 +412,7 @@ contains
     real(kind=dp_t), intent(in   ) :: rho0_edge_old(0:),rhoh0_edge_old(0:),t0_edge_old(0:)
     real(kind=dp_t), intent(in   ) :: rho0_new(0:),rhoh0_new(0:),t0_new(0:)
     real(kind=dp_t), intent(in   ) :: rho0_edge_new(0:),rhoh0_edge_new(0:),t0_edge_new(0:)
-    
+
     integer         :: i,j,k
     real(kind=dp_t) :: t0_edge
 
@@ -443,7 +443,7 @@ contains
                 eos_state%xn(:) = sx(i,j,k,spec_comp:spec_comp+nspec-1)
 
              else if (species_pred_type .eq. predict_rhoX) then
-                
+
                 ! interface states are rho and (rho X)
                 eos_state%rho = sx(i,j,k,rho_comp)
 
@@ -453,15 +453,15 @@ contains
 
                 ! interface states are rho and X
                 eos_state%rho = sx(i,j,k,rho_comp)
-                
+
                 eos_state%xn(:) = sx(i,j,k,spec_comp:spec_comp+nspec-1)
 
              endif
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rt, eos_state, pt_index)
-             
+
              if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                  enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 sx(i,j,k,rhoh_comp) = eos_state%h
@@ -469,18 +469,18 @@ contains
              else if (enthalpy_pred_type .eq. predict_T_then_rhohprime) then
                 sx(i,j,k,rhoh_comp) = eos_state%rho*eos_state%h - HALF*(rhoh0_old(k)+rhoh0_new(k))
              end if
-             
+
           enddo
        enddo
     enddo
     !$OMP END PARALLEL DO
 
     ! y-edge
-    !$OMP PARALLEL DO PRIVATE(i,j,k,t0_edge,eos_state,pt_index)    
+    !$OMP PARALLEL DO PRIVATE(i,j,k,t0_edge,eos_state,pt_index)
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)+1
           do i = lo(1), hi(1)
-             
+
              ! get edge-centered temperature
              if (enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 t0_edge = HALF*(t0_old(k)+t0_new(k))
@@ -488,7 +488,7 @@ contains
              else
                 eos_state%T = max(sy(i,j,k,temp_comp),small_temp)
              end if
-       
+
              ! get edge-centered density and species
              if (species_pred_type .eq. predict_rhoprime_and_X) then
 
@@ -501,23 +501,23 @@ contains
              else if (species_pred_type .eq. predict_rhoX) then
 
                 ! interface states are rho and (rho X)
-                eos_state%rho = sy(i,j,k,rho_comp) 
+                eos_state%rho = sy(i,j,k,rho_comp)
 
                 eos_state%xn(:) = sy(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
              else if (species_pred_type .eq. predict_rho_and_X) then
 
                 ! interface states are rho and X
-                eos_state%rho = sy(i,j,k,rho_comp) 
+                eos_state%rho = sy(i,j,k,rho_comp)
 
                 eos_state%xn(:) = sy(i,j,k,spec_comp:spec_comp+nspec-1)
 
-             endif                
+             endif
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rt, eos_state, pt_index)
-             
+
              if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                  enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 sy(i,j,k,rhoh_comp) = eos_state%h
@@ -532,7 +532,7 @@ contains
     !$OMP END PARALLEL DO
 
     ! z-edge
-    !$OMP PARALLEL DO PRIVATE(i,j,k,t0_edge,eos_state,pt_index) 
+    !$OMP PARALLEL DO PRIVATE(i,j,k,t0_edge,eos_state,pt_index)
     do k = lo(3), hi(3)+1
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
@@ -557,14 +557,14 @@ contains
              else if (species_pred_type .eq. predict_rhoX) then
 
                 ! interface states are rho and (rho X)
-                eos_state%rho = sz(i,j,k,rho_comp)  
+                eos_state%rho = sz(i,j,k,rho_comp)
 
                 eos_state%xn(:) = sz(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
              else if (species_pred_type .eq. predict_rho_and_X) then
 
                 ! interface states are rho and X
-                eos_state%rho = sz(i,j,k,rho_comp)                 
+                eos_state%rho = sz(i,j,k,rho_comp)
 
                 eos_state%xn(:) = sz(i,j,k,spec_comp:spec_comp+nspec-1)
 
@@ -573,7 +573,7 @@ contains
              pt_index(:) = (/i, j, k/)
 
              call eos(eos_input_rt, eos_state, pt_index)
-             
+
              if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                  enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 sz(i,j,k,rhoh_comp) = eos_state%h
@@ -582,12 +582,12 @@ contains
                 sz(i,j,k,rhoh_comp) =  eos_state%rho*eos_state%h &
                      - HALF*(rhoh0_edge_old(k)+rhoh0_edge_new(k))
              end if
-             
+
           enddo
        enddo
     enddo
     !$OMP END PARALLEL DO
-    
+
   end subroutine makeHfromRhoT_edge_3d_cart
 
   !----------------------------------------------------------------------------
@@ -612,20 +612,20 @@ contains
     real(kind=dp_t), intent(in   ) ::  rho0_cart(lo(1)-ng_r0:,lo(2)-ng_r0:,lo(3)-ng_r0:)
     real(kind=dp_t), intent(in   ) :: rhoh0_cart(lo(1)-ng_rh0:,lo(2)-ng_rh0:,lo(3)-ng_rh0:)
     real(kind=dp_t), intent(in   ) ::    t0_cart(lo(1)-ng_t0 :,lo(2)-ng_t0 :,lo(3)-ng_t0 :)
-    
+
     ! Local variables
     integer :: i, j, k
     real(kind=dp_t) rho0_edge, rhoh0_edge, t0_edge
 
     integer :: pt_index(MAX_SPACEDIM)
     type(eos_t) :: eos_state
-    
+
     ! x-edge
     !$OMP PARALLEL DO PRIVATE(i,j,k,t0_edge,rho0_edge,rhoh0_edge,eos_state,pt_index)
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)+1
-             
+
              ! get edge-centered temperature
              if (enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 t0_edge = HALF* (t0_cart(i-1,j,k) + t0_cart(i,j,k))
@@ -636,7 +636,7 @@ contains
 
              ! get edge-centered density and species
              if (species_pred_type .eq. predict_rhoprime_and_X) then
-                
+
                 ! interface states are rho' and X
                 rho0_edge = HALF * (rho0_cart(i-1,j,k) + rho0_cart(i,j,k))
                 eos_state%rho = sx(i,j,k,rho_comp) + rho0_edge
@@ -646,14 +646,14 @@ contains
              else if (species_pred_type .eq. predict_rhoX) then
 
                 ! interface states are rho and (rho X)
-                eos_state%rho = sx(i,j,k,rho_comp) 
+                eos_state%rho = sx(i,j,k,rho_comp)
 
                 eos_state%xn(:) = sx(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
              else if (species_pred_type .eq. predict_rho_and_X) then
 
                 ! interface states are rho and X
-                eos_state%rho = sx(i,j,k,rho_comp) 
+                eos_state%rho = sx(i,j,k,rho_comp)
 
                 eos_state%xn(:) = sx(i,j,k,spec_comp:spec_comp+nspec-1)
 
@@ -662,7 +662,7 @@ contains
              pt_index(:) = (/i, j, k/)
 
              call eos(eos_input_rt, eos_state, pt_index)
-             
+
              if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                  enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 sx(i,j,k,rhoh_comp) = eos_state%h
@@ -683,7 +683,7 @@ contains
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)+1
           do i = lo(1), hi(1)
-             
+
              ! get edge-centered temperature
              if (enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 t0_edge = HALF * (t0_cart(i,j-1,k) + t0_cart(i,j,k))
@@ -694,12 +694,12 @@ contains
 
              ! get edge-centered density and species
              if (species_pred_type .eq. predict_rhoprime_and_X) then
-                
+
                 ! interface states are rho' and X
                 rho0_edge = HALF * (rho0_cart(i,j-1,k) + rho0_cart(i,j,k))
                 eos_state%rho = sy(i,j,k,rho_comp) + rho0_edge
 
-                eos_state%xn(:) = sy(i,j,k,spec_comp:spec_comp+nspec-1) 
+                eos_state%xn(:) = sy(i,j,k,spec_comp:spec_comp+nspec-1)
 
              else if (species_pred_type .eq. predict_rhoX) then
 
@@ -720,7 +720,7 @@ contains
              pt_index(:) = (/i, j, k/)
 
              call eos(eos_input_rt, eos_state, pt_index)
-             
+
              if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                  enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 sy(i,j,k,rhoh_comp) = eos_state%h
@@ -729,7 +729,7 @@ contains
                 rhoh0_edge = HALF * (rhoh0_cart(i,j-1,k) + rhoh0_cart(i,j,k))
                 sy(i,j,k,rhoh_comp) = eos_state%rho*eos_state%h - rhoh0_edge
              end if
-             
+
           enddo
        enddo
     enddo
@@ -740,7 +740,7 @@ contains
     do k = lo(3), hi(3)+1
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-                 
+
              ! get edge-centered temperature
              if (enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 t0_edge = HALF * (t0_cart(i,j,k-1) + t0_cart(i,j,k))
@@ -755,8 +755,8 @@ contains
                 ! interface states are rho' and X
                 rho0_edge = HALF * (rho0_cart(i,j,k-1) + rho0_cart(i,j,k))
                 eos_state%rho = sz(i,j,k,rho_comp) + rho0_edge
-             
-                eos_state%xn(:) = sz(i,j,k,spec_comp:spec_comp+nspec-1) 
+
+                eos_state%xn(:) = sz(i,j,k,spec_comp:spec_comp+nspec-1)
 
              else if (species_pred_type .eq. predict_rhoX) then
 
@@ -777,7 +777,7 @@ contains
              pt_index(:) = (/i, j, k/)
 
              call eos(eos_input_rt, eos_state, pt_index)
-             
+
              if (enthalpy_pred_type .eq. predict_T_then_h .or. &
                  enthalpy_pred_type .eq. predict_Tprime_then_h) then
                 sz(i,j,k,rhoh_comp) = eos_state%h
@@ -785,14 +785,14 @@ contains
                 rhoh0_edge = HALF * (rhoh0_cart(i,j,k-1) + rhoh0_cart(i,j,k))
                 sz(i,j,k,rhoh_comp) = eos_state%rho*eos_state%h - rhoh0_edge
              end if
-             
+
           enddo
        enddo
     enddo
     !$OMP END PARALLEL DO
-    
+
   end subroutine makeHfromRhoT_edge_3d_sphr
-  
+
 
   !============================================================================
   ! makeTfromRhoH
@@ -866,12 +866,12 @@ contains
     use eos_module, only: eos_input_re, eos_input_rh, eos
     use eos_type_module
     use probin_module, only: use_eos_e_instead_of_h
-    
+
     integer, intent(in)               :: lo(:), hi(:), ng
     real (kind = dp_t), intent(inout) :: state(lo(1)-ng:,:)
     real (kind = dp_t), intent(in   ) :: p0(0:)
-    
-    
+
+
     ! Local variables
     integer :: i
     integer :: pt_index(MAX_SPACEDIM)
@@ -894,7 +894,7 @@ contains
           pt_index(:) = (/i, -1, -1/)
 
           call eos(eos_input_re, eos_state, pt_index)
-          
+
           state(i,temp_comp) = eos_state%T
 
        enddo
@@ -914,7 +914,7 @@ contains
           pt_index(:) = (/i, -1, -1/)
 
           call eos(eos_input_rh, eos_state, pt_index)
-          
+
           state(i,temp_comp) = eos_state%T
 
        enddo
@@ -937,55 +937,55 @@ contains
     integer, intent(in)               :: lo(:), hi(:), ng
     real (kind = dp_t), intent(inout) :: state(lo(1)-ng:,lo(2)-ng:,:)
     real (kind = dp_t), intent(in   ) ::  p0(0:)
-    
+
     ! Local variables
     integer :: i, j
     integer :: pt_index(MAX_SPACEDIM)
     type (eos_t) :: eos_state
 
     if (use_eos_e_instead_of_h) then
-    
+
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
 
              ! (rho, (h->e)) --> T, p
-          
+
              eos_state%rho   = state(i,j,rho_comp)
              eos_state%T     = state(i,j,temp_comp)
              eos_state%xn(:) = state(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
-             ! e = h - p/rho             
+             ! e = h - p/rho
              eos_state%e = state(i,j,rhoh_comp) / state(i,j,rho_comp) - &
                   p0(j) / state(i,j,rho_comp)
 
              pt_index(:) = (/i, j, -1/)
-          
+
              call eos(eos_input_re, eos_state, pt_index)
-          
+
              state(i,j,temp_comp) = eos_state%T
-          
+
           enddo
        enddo
-    
+
     else
 
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
 
              ! (rho, h) --> T, p
-          
+
              eos_state%rho   = state(i,j,rho_comp)
              eos_state%T     = state(i,j,temp_comp)
              eos_state%xn(:) = state(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
-             
+
              eos_state%h = state(i,j,rhoh_comp) / state(i,j,rho_comp)
 
              pt_index(:) = (/i, j, -1/)
-          
+
              call eos(eos_input_rh, eos_state, pt_index)
-          
+
              state(i,j,temp_comp) = eos_state%T
-          
+
           enddo
        enddo
 
@@ -1019,9 +1019,9 @@ contains
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
-             
+
                 ! (rho, (h->e)) --> T, p
-             
+
                 eos_state%rho   = state(i,j,k,rho_comp)
                 eos_state%T     = state(i,j,k,temp_comp)
                 eos_state%xn(:) = state(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
@@ -1029,13 +1029,13 @@ contains
                 ! e = h - p/rho
                 eos_state%e = state(i,j,k,rhoh_comp) / state(i,j,k,rho_comp) - &
                      p0(k) / state(i,j,k,rho_comp)
-                
+
                 pt_index(:) = (/i, j, k/)
-             
+
                 call eos(eos_input_re, eos_state, pt_index)
-             
+
                 state(i,j,k,temp_comp) = eos_state%T
-             
+
              enddo
           enddo
        enddo
@@ -1047,21 +1047,24 @@ contains
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
-             
+
                 ! (rho, h) --> T, p
-             
+
                 eos_state%rho   = state(i,j,k,rho_comp)
                 eos_state%T     = state(i,j,k,temp_comp)
                 eos_state%xn(:) = state(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
                 eos_state%h = state(i,j,k,rhoh_comp) / state(i,j,k,rho_comp)
-                
+
                 pt_index(:) = (/i, j, k/)
-             
+
+                print *, 'Xn', eos_state%xn(:)
+                print *, 'rho', eos_state%rho
+
                 call eos(eos_input_rh, eos_state, pt_index)
-             
+
                 state(i,j,k,temp_comp) = eos_state%T
-             
+
              enddo
           enddo
        enddo
@@ -1103,9 +1106,9 @@ contains
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
-             
+
                 ! (rho, (h->e)) --> T, p
-             
+
                 eos_state%rho   = state(i,j,k,rho_comp)
                 eos_state%T     = state(i,j,k,temp_comp)
                 eos_state%xn(:) = state(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
@@ -1113,13 +1116,13 @@ contains
                 ! e = h - p/rho
                 eos_state%e = state(i,j,k,rhoh_comp) / state(i,j,k,rho_comp) - &
                      p0_cart(i,j,k,1) / state(i,j,k,rho_comp)
-                
+
                 pt_index(:) = (/i, j, k/)
-             
+
                 call eos(eos_input_re, eos_state, pt_index)
-             
+
                 state(i,j,k,temp_comp) = eos_state%T
-             
+
              enddo
           enddo
        enddo
@@ -1133,21 +1136,21 @@ contains
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
-             
+
                 ! (rho, h) --> T, p
-             
+
                 eos_state%rho   = state(i,j,k,rho_comp)
                 eos_state%T     = state(i,j,k,temp_comp)
                 eos_state%xn(:) = state(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
                 eos_state%h = state(i,j,k,rhoh_comp) / state(i,j,k,rho_comp)
-                
+
                 pt_index(:) = (/i, j, k/)
-             
+
                 call eos(eos_input_rh, eos_state, pt_index)
-             
+
                 state(i,j,k,temp_comp) = eos_state%T
-             
+
              enddo
           enddo
        enddo
@@ -1235,7 +1238,7 @@ contains
     integer, intent(in) :: lo(:), hi(:), ng
     real (kind = dp_t), intent(inout) ::  state(lo(1)-ng:,:)
     real (kind = dp_t), intent(in   ) ::  p0(0:)
-    
+
     ! Local variables
     integer :: i
     integer :: pt_index(MAX_SPACEDIM)
@@ -1279,21 +1282,21 @@ contains
     integer, intent(in) :: lo(:), hi(:), ng
     real (kind = dp_t), intent(inout) ::  state(lo(1)-ng:,lo(2)-ng:,:)
     real (kind = dp_t), intent(in   ) ::  p0(0:)
-    
+
     ! Local variables
     integer :: i, j
     integer :: pt_index(MAX_SPACEDIM)
     type (eos_t) :: eos_state
-    
+
     do j = lo(2), hi(2)
        do i = lo(1), hi(1)
-          
+
           ! (rho, p) --> T
-          
+
           eos_state%rho  = state(i,j,rho_comp)
           eos_state%T = state(i,j,temp_comp)
           eos_state%xn(:) = state(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
-          
+
           if (use_pprime_in_tfromp) then
              eos_state%p = p0(j) + state(i,j,pi_comp)
           else
@@ -1301,14 +1304,14 @@ contains
           endif
 
           pt_index(:) = (/i, j, -1/)
-          
+
           call eos(eos_input_rp, eos_state, pt_index)
-          
+
           state(i,j,temp_comp) = eos_state%T
-          
+
        enddo
     enddo
-    
+
   end subroutine makeTfromRhoP_2d
 
   !----------------------------------------------------------------------------
@@ -1336,9 +1339,9 @@ contains
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-             
+
              ! (rho, p) --> T
-             
+
              eos_state%rho   = state(i,j,k,rho_comp)
              eos_state%T     = state(i,j,k,temp_comp)
              if (use_pprime_in_tfromp) then
@@ -1350,16 +1353,16 @@ contains
              eos_state%xn(:) = state(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rp, eos_state, pt_index)
-             
+
              state(i,j,k,temp_comp) = eos_state%T
-             
+
           enddo
        enddo
     enddo
     !$OMP END PARALLEL DO
-    
+
   end subroutine makeTfromRhoP_3d
 
   !----------------------------------------------------------------------------
@@ -1392,9 +1395,9 @@ contains
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-             
+
              ! (rho, p) --> T
-             
+
              eos_state%rho  = state(i,j,k,rho_comp)
              eos_state%T = state(i,j,k,temp_comp)
              if (use_pprime_in_tfromp) then
@@ -1405,16 +1408,16 @@ contains
              eos_state%xn(:) = state(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rp, eos_state, pt_index)
-             
+
              state(i,j,k,temp_comp) = eos_state%T
-             
+
           enddo
        enddo
     enddo
     !$OMP END PARALLEL DO
-    
+
     deallocate(p0_cart)
 
   end subroutine makeTfromRhoP_3d_sphr
@@ -1498,29 +1501,29 @@ contains
 
     integer, intent(in) :: lo(:), hi(:), ng_s, ng_so, ng_p
     real (kind = dp_t), intent(in   ) ::    state(lo(1)-ng_s :,:)
-    real (kind = dp_t), intent(in   ) :: temp_old(lo(1)-ng_so:)    
+    real (kind = dp_t), intent(in   ) :: temp_old(lo(1)-ng_so:)
     real (kind = dp_t), intent(inout) ::     peos(lo(1)-ng_p :)
-    
+
     ! Local variables
     integer :: i
     integer :: pt_index(MAX_SPACEDIM)
     type (eos_t) :: eos_state
-    
+
     do i = lo(1), hi(1)
 
        ! (rho, H) --> T, p
        eos_state%rho   = state(i,rho_comp)
        eos_state%T     = temp_old(i)
        eos_state%xn(:) = state(i,spec_comp:spec_comp+nspec-1)/eos_state%rho
-       
+
        eos_state%h = state(i,rhoh_comp) / state(i,rho_comp)
 
        pt_index(:) = (/i, -1, -1/)
-       
+
        call eos(eos_input_rh, eos_state, pt_index)
-       
+
        peos(i) = eos_state%p
-       
+
     enddo
 
   end subroutine makePfromRhoH_1d
@@ -1537,14 +1540,14 @@ contains
 
     integer, intent(in) :: lo(:), hi(:), ng_s, ng_so, ng_p
     real (kind = dp_t), intent(in   ) ::    state(lo(1)-ng_s :,lo(2)-ng_s :,:)
-    real (kind = dp_t), intent(in   ) :: temp_old(lo(1)-ng_so:,lo(2)-ng_so:)    
+    real (kind = dp_t), intent(in   ) :: temp_old(lo(1)-ng_so:,lo(2)-ng_so:)
     real (kind = dp_t), intent(inout) ::     peos(lo(1)-ng_p :,lo(2)-ng_p :)
-    
+
     ! Local variables
     integer :: i, j
     integer :: pt_index(MAX_SPACEDIM)
     type (eos_t) :: eos_state
-    
+
     do j = lo(2), hi(2)
        do i = lo(1), hi(1)
 
@@ -1591,7 +1594,7 @@ contains
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-             
+
              ! (rho, H) --> T, p
              eos_state%rho   = state(i,j,k,rho_comp)
              eos_state%T     = temp_old(i,j,k)
@@ -1600,11 +1603,11 @@ contains
              eos_state%h = state(i,j,k,rhoh_comp) / state(i,j,k,rho_comp)
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rh, eos_state, pt_index)
-             
+
              peos(i,j,k) = eos_state%p
-             
+
           enddo
        enddo
     enddo
@@ -1629,7 +1632,7 @@ contains
     type(bc_level) , intent(in   ) :: the_bc_level(:)
     type(ml_layout), intent(inout) :: mla
     real(kind=dp_t), intent(in   ) :: dx(:,:)
-    
+
     ! local
     real(kind=dp_t), pointer :: sop(:,:,:,:)
     integer                  :: i,n,ng_s
@@ -1694,7 +1697,7 @@ contains
     use probin_module, only: use_pprime_in_tfromp
 
     integer           , intent(in   ) :: lo(:),hi(:),ng_s
-    real (kind = dp_t), intent(inout) :: s(lo(1)-ng_s:,:)  
+    real (kind = dp_t), intent(inout) :: s(lo(1)-ng_s:,:)
     real(kind=dp_t)   , intent(in   ) :: p0(0:)
 
     ! local
@@ -1735,7 +1738,7 @@ contains
     use probin_module, only: use_pprime_in_tfromp
 
     integer           , intent(in   ) :: lo(:),hi(:),ng_s
-    real (kind = dp_t), intent(inout) :: s(lo(1)-ng_s:,lo(2)-ng_s:,:)  
+    real (kind = dp_t), intent(inout) :: s(lo(1)-ng_s:,lo(2)-ng_s:,:)
     real(kind=dp_t)   , intent(in   ) :: p0(0:)
 
     ! local
@@ -1766,7 +1769,7 @@ contains
     end do
 
   end subroutine makeTHfromRhoP_2d
-  
+
   !----------------------------------------------------------------------------
   ! makeTHfromRhoP_3d
   !----------------------------------------------------------------------------
@@ -1779,7 +1782,7 @@ contains
     use probin_module, only: use_pprime_in_tfromp
 
     integer           , intent(in   ) :: lo(:),hi(:),ng_s
-    real (kind = dp_t), intent(inout) :: s(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)  
+    real (kind = dp_t), intent(inout) :: s(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)
     real(kind=dp_t)   , intent(in   ) :: p0(0:)
 
     ! local
@@ -1791,7 +1794,7 @@ contains
     do k=lo(3),hi(3)
        do j=lo(2),hi(2)
           do i=lo(1),hi(1)
-             
+
              eos_state%rho   = s(i,j,k,rho_comp)
              eos_state%xn(:) = s(i,j,k,spec_comp:spec_comp+nspec-1)/s(i,j,k,rho_comp)
              eos_state%T     = s(i,j,k,temp_comp)
@@ -1802,12 +1805,12 @@ contains
              endif
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rp, eos_state, pt_index)
-             
+
              s(i,j,k,rhoh_comp) = eos_state%rho*eos_state%h
              s(i,j,k,temp_comp) = eos_state%T
-             
+
           end do
        end do
     end do
@@ -1845,7 +1848,7 @@ contains
     do k=lo(3),hi(3)
        do j=lo(2),hi(2)
           do i=lo(1),hi(1)
-             
+
              eos_state%rho   = s(i,j,k,rho_comp)
              eos_state%xn(:) = s(i,j,k,spec_comp:spec_comp+nspec-1)/s(i,j,k,rho_comp)
              eos_state%T     = s(i,j,k,temp_comp)
@@ -1856,12 +1859,12 @@ contains
              endif
 
              pt_index(:) = (/i, j, k/)
-             
+
              call eos(eos_input_rp, eos_state, pt_index)
-             
+
              s(i,j,k,rhoh_comp) = eos_state%rho*eos_state%h
              s(i,j,k,temp_comp) = eos_state%T
-             
+
           end do
        end do
     end do
