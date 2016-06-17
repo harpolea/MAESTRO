@@ -59,7 +59,8 @@ contains
 
 
   subroutine react_state(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc,&
-                         rho_Hext,p0,dt,dx,the_bc_level,chrls,u,alpha)
+                         rho_Hext,p0,dt,dx,the_bc_level,chrls,u,alpha,beta, &
+                         gam)
 
     use probin_module, only: use_tfromp, do_heating, do_burning
     use variables, only: temp_comp, rhoh_comp, rho_comp,nscal
@@ -83,6 +84,8 @@ contains
     real(kind=dp_t) , intent(in   ) :: chrls(:,:,:,:,:,:,:)
     type(multifab)  , intent(in   ) :: u(:)
     type(multifab), intent(in) :: alpha(:)
+    type(multifab), intent(in) :: beta(:)
+    type(multifab), intent(in) :: gam(:)
 
     ! Local
     type(bl_prof_timer), save :: bpt
@@ -169,7 +172,7 @@ contains
        call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
        call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
     end do
-    call cons_to_prim(snew, u, alpha, s_prim, u_prim, mla,the_bc_level)
+    call cons_to_prim(snew, u, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
 
     ! now update temperature
     if (use_tfromp) then
@@ -907,9 +910,9 @@ contains
                    sumX = sumX + x_out(n)
                 enddo
                 !FIXME: uncomment
-                !if (abs(sumX - ONE) > reaction_sum_tol) then
-                    !call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
-                !endif
+                if (abs(sumX - ONE) > reaction_sum_tol) then
+                    call bl_error("ERROR: abundances do not sum to 1", abs(sumX-ONE))
+                endif
 
                 ! Calculate gravity stuff
                 grav_term = 0.d0

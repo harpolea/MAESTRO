@@ -1043,6 +1043,8 @@ contains
 
     else
 
+        !print *, 'eos_state%rho   =', state(:,:,:,rho_comp)
+
        !$OMP PARALLEL DO PRIVATE(i,j,k, eos_state, pt_index)
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
@@ -1058,8 +1060,8 @@ contains
 
                 pt_index(:) = (/i, j, k/)
 
-                print *, 'Xn', eos_state%xn(:)
-                print *, 'rho', eos_state%rho
+                !print *, 'Xn', eos_state%xn(:)
+                !print *, 'rho', eos_state%rho
 
                 call eos(eos_input_rh, eos_state, pt_index)
 

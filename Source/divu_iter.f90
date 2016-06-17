@@ -21,7 +21,7 @@ contains
 
   subroutine divu_iter(istep_divu_iter,uold,sold,pi,gpi,thermal, &
                        Source_old,normal,hgrhs,dSdt,div_coeff_old,rho0_old,Dh0_old,p0_old,gamma1bar, &
-                       tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha)
+                       tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha,beta)
 
     use variables, only: nscal, foextrap_comp
     use network, only: nspec
@@ -68,6 +68,7 @@ contains
     type(multifab) , intent(in   ) :: u0(:)
     type(multifab) , intent(in   ) :: gam(:)
     type(multifab) , intent(in   ) :: alpha(:)
+    type(multifab) , intent(in   ) :: beta(:)
 
     ! local
     integer        :: n,ng_s,nlevs
@@ -122,7 +123,7 @@ contains
 
     ! burn to define rho_omegadot and rho_Hnuc -- needed to make S
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot,rho_Hnuc,rho_Hext,p0_old, &
-                     halfdt,dx,the_bc_tower%bc_tower_array,chrls,uold,alpha)
+                     halfdt,dx,the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam)
 
     print *, 'DID I GET HERE???'
 

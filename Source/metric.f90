@@ -67,7 +67,7 @@ contains
                     rad = prob_lo(3) + (dble(i) + HALF) * dx(n,3)
                     !print *, 'radial coord: ', rad
                     !print *,  2.d0 * (1.d0 - rad / Rr) * g / c**2
-                    alphap(:,:,i,1) = sqrt(1.d0 - 2.d0 * (1.d0 - rad / Rr) * g / c**2)
+                    alphap(:,:,i,1) = c * sqrt(1.d0 - 2.d0 * (1.d0 - rad / Rr) * g / c**2)
                     gamp(:,:,i,:) = 1.d0 + 2.d0 * (1.d0 - rad / Rr) * g / c**2
                 enddo
 
@@ -340,7 +340,7 @@ contains
 
     end subroutine christoffels
 
-    subroutine cons_to_prim(s, u, alpha, s_prim, u_prim, mla,the_bc_level)
+    subroutine cons_to_prim(s, u, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
         use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
         ! FIXME: need to import thermal gamma
         use probin_module, only : gamm_therm
@@ -348,6 +348,8 @@ contains
         type(multifab), intent(in) :: s(:)
         type(multifab), intent(in) :: u(:)
         type(multifab), intent(in) :: alpha(:)
+        type(multifab), intent(in) :: beta(:)
+        type(multifab), intent(in) :: gam(:)
         type(multifab), intent(inout) :: s_prim(:)
         type(multifab), intent(inout) :: u_prim(:)
         type(ml_layout)   , intent(in) :: mla
@@ -356,6 +358,8 @@ contains
         real(kind=dp_t), pointer ::  sp(:,:,:,:)
         real(kind=dp_t), pointer ::  up(:,:,:,:)
         real(kind=dp_t), pointer ::  alphap(:,:,:,:)
+        real(kind=dp_t), pointer ::  betap(:,:,:,:)
+        real(kind=dp_t), pointer ::  gamp(:,:,:,:)
         real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
         real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
 
@@ -373,10 +377,14 @@ contains
                sp => dataptr(s(n), m)
                up => dataptr(u(n), m)
                alphap => dataptr(alpha(n), m)
+               betap => dataptr(beta(n), m)
+               gamp => dataptr(gam(n), m)
                s_primp => dataptr(s_prim(n), m)
                u_primp => dataptr(u_prim(n), m)
                lo =  lwb(get_box(s(n), m))
                hi =  upb(get_box(s(n), m))
+
+               !print *, 's', sp(:,:,:,rhoh_comp)
 
                ! initialise by simply copying - assume rest of the components are unchanged
                s_primp(:,:,:,:) = sp(:,:,:,:)
@@ -393,13 +401,18 @@ contains
                            pmax = (gamm_therm - 1.d0) * sp(i,j,k,rhoh_comp)
                            pbar = 0.5d0 * (pmin + pmax)
 
+                           !print *, 'pmax', pmax
 
                            !print *, 'hi'
 
                            call Newton_Raphson(pmin, pmax, pbar, root_find_on_me, &
-                           sp(i,j,k,rho_comp), up(i,j,k,:), sp(i,j,k,rhoh_comp), alphap(i,j,k,1), fail)
+                           sp(i,j,k,rho_comp), up(i,j,k,:), &
+                           sp(i,j,k,rhoh_comp), alphap(i,j,k,1), &
+                           betap(i,j,k,:), gamp(i,j,k,:), fail)
 
                            u0 = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / (gamm_therm * pbar)
+
+                           !print *, 'pmax', pmax
 
                            s_primp(i,j,k,rho_comp) = sp(i,j,k,rho_comp) / u0
                            s_primp(i,j,k,rhoh_comp) = sp(i,j,k,rhoh_comp) / u0
@@ -414,6 +427,7 @@ contains
        enddo
 
        !print *, 'sprim', s_primp(:,:,:,1)
+       !print *, 'gamm_therm', gamm_therm
 
        ! fill ghosts
        call ml_restrict_and_fill(nlevs,s_prim,mla%mba%rr,the_bc_level, &
@@ -428,13 +442,13 @@ contains
                                  nc=dm, &
                                  ng=u_prim(1)%ng)
 
-
+        !print *, 'sprim', s_primp(:,:,:,1)
 
     end subroutine cons_to_prim
 
-    subroutine root_find_on_me(pnew, pbar, dp, D, U, Dh, alpha)
+    subroutine root_find_on_me(pnew, pbar, dp, D, U, Dh, alpha, gam, beta)
         ! FIXME: need to import thermal gamma
-        use probin_module, only : gamm_therm
+        use probin_module, only : gamm_therm, c
 
         real(kind=dp_t), intent(out) :: pnew
         real(kind=dp_t), intent(in) :: pbar
@@ -443,24 +457,57 @@ contains
         real(kind=dp_t), intent(in) :: U(3)
         real(kind=dp_t), intent(in) :: Dh
         real(kind=dp_t), intent(in) :: alpha
+        real(kind=dp_t), intent(in) :: gam(3)
+        real(kind=dp_t), intent(in) :: beta(3)
 
-        integer :: i
-        real(kind=dp_t) :: usq
+        integer :: i,j
+        real(kind=dp_t) :: usq, h, rho, W_lor, u0
+        real(kind=dp_t)     :: eye(1:3,1:3)
 
-        usq = 0.d0
-
+        ! make identity matrix
+        eye(:,:) = 0.d0
         do i = 1,3
-            usq = usq + U(i)*U(i)
+            eye(i,i) = 1.d0
         enddo
 
-        pnew = (gamm_therm - 1.d0) * (Dh/D - 1.d0) * D * sqrt(alpha**2 - usq) / gamm_therm - pbar
+        if (pbar > 0.d0) then
 
-        dp = usq * gamm_therm * pnew / Dh - 1.d0
+            usq = 0.d0
+
+            usq = sum(U**2)
+
+            if (usq < c**2) then
+                W_lor = 0.d0
+                do i=1,3
+                    do j=1,3
+                        W_lor = W_lor + eye(i,j) * gam(i) * (u(i) + beta(i)) &
+                                * (u(j) + beta(j)) / alpha**2
+                    enddo
+                enddo
+                W_lor = ONE / sqrt(1.d0 - W_lor/c**2)
+                u0 = W_lor / alpha
+            else
+                u0 = 1.d0 / c
+            endif
+
+            !print *, alpha
+
+            rho = D / u0
+            h = Dh / D
+
+            pnew = (gamm_therm - 1.d0) * (h - 1.d0) * rho / gamm_therm - pbar
+
+            dp = usq * gamm_therm * pnew / Dh - 1.d0
+        else
+            pnew = c
+            dp = c
+
+        endif
 
 
     end subroutine root_find_on_me
 
-    subroutine Newton_Raphson(xl,xh,xm,NonLinearEquation, D, U, Dh, alpha,fail)
+    subroutine Newton_Raphson(xl,xh,xm,NonLinearEquation, D, U, Dh, alpha,beta,gam,fail)
         ! Root finder taken from multimodel code
       real(kind=dp_t), intent(inout) :: xl     ! root bracket 1
       real(kind=dp_t), intent(inout) :: xh     ! root bracket 2
@@ -470,6 +517,8 @@ contains
       real(kind=dp_t), intent(in) :: U(3)
       real(kind=dp_t), intent(in) :: Dh
       real(kind=dp_t), intent(in) :: alpha
+      real(kind=dp_t), intent(in) :: gam(3)
+      real(kind=dp_t), intent(in) :: beta(3)
       logical, intent(out) :: fail
 
       integer  :: k                      ! iteration count
@@ -478,9 +527,10 @@ contains
       integer, parameter :: ITERMAX=3000 ! max number of iteration
       real(kind=dp_t), parameter :: TOLERANCE=1.d-14 ! tolerance for error
 
-      call NonLinearEquation(xm,xl,df,D, U, Dh, alpha)  ! Set xm=f(xl)
-      call NonLinearEquation(xn,xh,df,D, U, Dh, alpha)  ! Set xn=f(xh)
+      call NonLinearEquation(xm,xl,df,D, U, Dh, alpha, beta,gam)  ! Set xm=f(xl)
+      call NonLinearEquation(xn,xh,df,D, U, Dh, alpha, beta, gam)  ! Set xn=f(xh)
       if (xm*xn.gt.zero) then           ! check if function changes sign
+          !print *,'OOPS'
          xl = 0.0d0
          xh = 10.0d0**(14)
       endif
@@ -495,7 +545,7 @@ contains
       k = 0                             ! initialize iteration count
       do while (error > TOLERANCE .and. k < ITERMAX) ! iterate
          k = k+1                         ! increment iteration count
-         call NonLinearEquation(f,xm,df,D, U, Dh, alpha) ! calculate f(xm), df(xm)
+         call NonLinearEquation(f,xm,df,D, U, Dh, alpha, beta, gam) ! calculate f(xm), df(xm)
          if (f > zero) then              ! Update root bracketing
             xh = xm                       ! update high
          else
