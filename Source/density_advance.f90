@@ -19,8 +19,8 @@ contains
 
   subroutine density_advance(mla,which_step,sold,snew,sedge,sflux,scal_force,&
                              umac,w0,w0mac,etarhoflux, &
-                             rho0_old,rho0_new,p0_dummy, &
-                             rho0_predicted_edge,dx,dt,the_bc_level)
+                             D0_old,D0_new,p0_dummy, &
+                             D0_predicted_edge,dx,dt,the_bc_level)
 
     use bl_prof_module, only: bl_prof_timer, build, destroy
     use bl_constants_module, only: ZERO, ONE
@@ -51,25 +51,25 @@ contains
     real(kind=dp_t), intent(in   ) :: w0(:,0:)
     type(multifab) , intent(in   ) :: w0mac(:,:)
     type(multifab) , intent(inout) :: etarhoflux(:)
-    real(kind=dp_t), intent(in   ) :: rho0_old(:,0:)
-    real(kind=dp_t), intent(in   ) :: rho0_new(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_old(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_new(:,0:)
     real(kind=dp_t), intent(in   ) :: p0_dummy(:,0:)
-    real(kind=dp_t), intent(in   ) :: rho0_predicted_edge(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_predicted_edge(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:),dt
     type(bc_level) , intent(in   ) :: the_bc_level(:)
 
-    type(multifab) :: rho0_old_cart(mla%nlevel)
+    type(multifab) :: D0_old_cart(mla%nlevel)
     type(multifab) :: p0_dummy_cart(mla%nlevel)
 
-    type(multifab) :: rho0mac_old(mla%nlevel,mla%dim)
-    type(multifab) :: rho0mac_new(mla%nlevel,mla%dim)
+    type(multifab) :: D0mac_old(mla%nlevel,mla%dim)
+    type(multifab) :: D0mac_new(mla%nlevel,mla%dim)
 
     integer    :: comp,i,n,dm,nlevs
     logical    :: is_vel
     real(dp_t) :: smin,smax
 
-    real(kind=dp_t) :: rho0_edge_old(nlevs_radial,0:nr_fine)
-    real(kind=dp_t) :: rho0_edge_new(nlevs_radial,0:nr_fine)
+    real(kind=dp_t) :: D0_edge_old(nlevs_radial,0:nr_fine)
+    real(kind=dp_t) :: D0_edge_new(nlevs_radial,0:nr_fine)
 
     type(bl_prof_timer), save :: bpt
 
@@ -83,12 +83,12 @@ contains
     if (spherical .eq. 0) then
 
        ! create edge-centered base state quantities.
-       ! Note: rho0_edge_{old,new} 
+       ! Note: D0_edge_{old,new}
        ! contains edge-centered quantities created via spatial interpolation.
-       ! This is to be contrasted to rho0_predicted_edge which is the half-time
-       ! edge state created in advect_base.       
-       call cell_to_edge(rho0_old,rho0_edge_old)
-       call cell_to_edge(rho0_new,rho0_edge_new)
+       ! This is to be contrasted to D0_predicted_edge which is the half-time
+       ! edge state created in advect_base.
+       call cell_to_edge(D0_old,D0_edge_old)
+       call cell_to_edge(D0_new,D0_edge_new)
 
     end if
 
@@ -104,26 +104,26 @@ contains
 
     if (spherical .eq. 1) then
        do n=1,nlevs
-          call build(rho0_old_cart(n), get_layout(sold(n)), 1, 1)
+          call build(D0_old_cart(n), get_layout(sold(n)), 1, 1)
        end do
-       call put_1d_array_on_cart(rho0_old,rho0_old_cart,dm+rho_comp,.false., &
+       call put_1d_array_on_cart(D0_old,D0_old_cart,dm+rho_comp,.false., &
                                  .false.,dx,the_bc_level,mla)
     end if
 
     ! ** density source term **
 
-    ! Make source term for rho or rho' 
+    ! Make source term for rho or rho'
     if (species_pred_type == predict_rhoprime_and_X) then
        ! rho' source term
        !   . this is needed for pred_rhoprime_and_X
-       call modify_scal_force(scal_force,sold,umac,rho0_old, &
-                              rho0_edge_old,w0,dx,rho0_old_cart,rho_comp, &
+       call modify_scal_force(scal_force,sold,umac,D0_old, &
+                              D0_edge_old,w0,dx,D0_old_cart,rho_comp, &
                               mla,the_bc_level)
 
     else if (species_pred_type == predict_rho_and_X) then
        ! rho source term
-       call modify_scal_force(scal_force,sold,umac,rho0_old, &
-                              rho0_edge_old,w0,dx,rho0_old_cart,rho_comp, &
+       call modify_scal_force(scal_force,sold,umac,D0_old, &
+                              D0_edge_old,w0,dx,D0_old_cart,rho_comp, &
                               mla,the_bc_level,.true.)
     endif
 
@@ -137,7 +137,7 @@ contains
 
     if (spherical .eq. 1) then
        do n=1,nlevs
-          call destroy(rho0_old_cart(n))
+          call destroy(D0_old_cart(n))
        end do
     end if
 
@@ -156,14 +156,14 @@ contains
        ! we are predicting X to the edges, so convert the scalar
        ! data to those quantities
 
-       ! convert (rho X) --> X in sold 
+       ! convert (rho X) --> X in sold
        call convert_rhoX_to_X(sold,.true.,mla,the_bc_level)
     endif
 
     if (species_pred_type == predict_rhoprime_and_X) then
        ! convert rho -> rho' in sold
        !   . this is needed for predict_rhoprime_and_X
-       call put_in_pert_form(mla,sold,rho0_old,dx,rho_comp,foextrap_comp,.true.,the_bc_level)
+       call put_in_pert_form(mla,sold,D0_old,dx,rho_comp,foextrap_comp,.true.,the_bc_level)
     endif
 
 
@@ -225,13 +225,13 @@ contains
     end if
 
     if (species_pred_type == predict_rhoprime_and_X) then
-       ! convert rho' -> rho in sold 
-       call put_in_pert_form(mla,sold,rho0_old,dx,rho_comp,dm+rho_comp,.false.,the_bc_level)
+       ! convert rho' -> rho in sold
+       call put_in_pert_form(mla,sold,D0_old,dx,rho_comp,dm+rho_comp,.false.,the_bc_level)
     endif
 
     if ((species_pred_type == predict_rhoprime_and_X) .or. &
         (species_pred_type == predict_rho_and_X)) then
-       ! convert X --> (rho X) in sold 
+       ! convert X --> (rho X) in sold
        call convert_rhoX_to_X(sold,.false.,mla,the_bc_level)
     endif
 
@@ -268,33 +268,33 @@ contains
        if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call multifab_build_edge(rho0mac_old(n,comp),mla%la(n),1,1,comp) 
+                call multifab_build_edge(D0mac_old(n,comp),mla%la(n),1,1,comp)
              end do
           end do
 
-          call make_s0mac(mla,rho0_old,rho0mac_old,dx,dm+rho_comp,the_bc_level)
+          call make_s0mac(mla,D0_old,D0mac_old,dx,dm+rho_comp,the_bc_level)
 
        end if
 
        ! compute species fluxes
        call mk_rhoX_flux(mla,sflux,etarhoflux,sold,sedge,umac,w0,w0mac, &
-                         rho0_old,rho0_edge_old,rho0mac_old, &
-                         rho0_old,rho0_edge_old,rho0mac_old, &
-                         rho0_predicted_edge,spec_comp,spec_comp+nspec-1)
+                         D0_old,D0_edge_old,D0mac_old, &
+                         D0_old,D0_edge_old,D0mac_old, &
+                         D0_predicted_edge,spec_comp,spec_comp+nspec-1)
 
        ! compute tracer fluxes
        if (ntrac .ge. 1) then
           call mk_rhoX_flux(mla,sflux,etarhoflux,sold,sedge,umac,w0,w0mac, &
-                            rho0_old,rho0_edge_old,rho0mac_old, &
-                            rho0_old,rho0_edge_old,rho0mac_old, &
-                            rho0_predicted_edge,trac_comp,trac_comp+ntrac-1)
+                            D0_old,D0_edge_old,D0mac_old, &
+                            D0_old,D0_edge_old,D0mac_old, &
+                            D0_predicted_edge,trac_comp,trac_comp+ntrac-1)
        end if
 
 
        if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call destroy(rho0mac_old(n,comp))
+                call destroy(D0mac_old(n,comp))
              end do
           end do
        end if
@@ -304,35 +304,35 @@ contains
        if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call multifab_build_edge(rho0mac_old(n,comp),mla%la(n),1,1,comp)
-                call multifab_build_edge(rho0mac_new(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge(D0mac_old(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge(D0mac_new(n,comp),mla%la(n),1,1,comp)
              end do
           end do
 
-          call make_s0mac(mla,rho0_old,rho0mac_old,dx,dm+rho_comp,the_bc_level)
-          call make_s0mac(mla,rho0_new,rho0mac_new,dx,dm+rho_comp,the_bc_level)
+          call make_s0mac(mla,D0_old,D0mac_old,dx,dm+rho_comp,the_bc_level)
+          call make_s0mac(mla,D0_new,D0mac_new,dx,dm+rho_comp,the_bc_level)
 
        end if
 
        ! compute species fluxes
        call mk_rhoX_flux(mla,sflux,etarhoflux,sold,sedge,umac,w0,w0mac, &
-                         rho0_old,rho0_edge_old,rho0mac_old, &
-                         rho0_new,rho0_edge_new,rho0mac_new, &
-                         rho0_predicted_edge,spec_comp,spec_comp+nspec-1)
+                         D0_old,D0_edge_old,D0mac_old, &
+                         D0_new,D0_edge_new,D0mac_new, &
+                         D0_predicted_edge,spec_comp,spec_comp+nspec-1)
 
        ! compute tracer fluxes
        if (ntrac .ge. 1) then
           call mk_rhoX_flux(mla,sflux,etarhoflux,sold,sedge,umac,w0,w0mac, &
-                            rho0_old,rho0_edge_old,rho0mac_old, &
-                            rho0_new,rho0_edge_new,rho0mac_new, &
-                            rho0_predicted_edge,trac_comp,trac_comp+ntrac-1)
+                            D0_old,D0_edge_old,D0mac_old, &
+                            D0_new,D0_edge_new,D0mac_new, &
+                            D0_predicted_edge,trac_comp,trac_comp+ntrac-1)
        end if
 
        if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call destroy(rho0mac_old(n,comp))
-                call destroy(rho0mac_new(n,comp))
+                call destroy(D0mac_old(n,comp))
+                call destroy(D0mac_new(n,comp))
              end do
           end do
        end if
@@ -345,7 +345,7 @@ contains
     !     3) Define density as the sum of the (rho X)_i
     !     4) Update tracer with conservative differencing as well.
     !**************************************************************************
-    
+
     do n=1,nlevs
        call setval(scal_force(n),ZERO,all=.true.)
     end do
@@ -353,7 +353,7 @@ contains
     ! p0 only used in rhoh update so we just pass in a dummy version
     if (spherical .eq. 1) then
        do n=1,nlevs
-          call build(p0_dummy_cart(n), get_layout(sold(n)), 1, 1)          
+          call build(p0_dummy_cart(n), get_layout(sold(n)), 1, 1)
        end do
     end if
 
@@ -370,30 +370,30 @@ contains
           call destroy(p0_dummy_cart(n))
        end do
     end if
-    
+
     if (verbose .ge. 1) then
        do n=1, nlevs
           if (parallel_IOProcessor()) write(6,1999) n
 
           do comp = spec_comp,spec_comp+nspec-1
              call multifab_div_div_c(snew(n),comp,snew(n),rho_comp,1)
-             
-             smin = multifab_min_c(snew(n),comp) 
+
+             smin = multifab_min_c(snew(n),comp)
              smax = multifab_max_c(snew(n),comp)
-             
+
              if (parallel_IOProcessor()) &
                   write(6,2002) spec_names(comp-spec_comp+1), smin,smax
              call multifab_mult_mult_c(snew(n),comp,snew(n),rho_comp,1)
           end do
-          
-          smin = multifab_min_c(snew(n),rho_comp) 
+
+          smin = multifab_min_c(snew(n),rho_comp)
           smax = multifab_max_c(snew(n),rho_comp)
-          
+
           if (parallel_IOProcessor()) &
                write(6,2000) smin,smax
 
           if (ntrac .ge. 1) then
-             smin = multifab_min_c(snew(n),trac_comp) 
+             smin = multifab_min_c(snew(n),trac_comp)
              smax = multifab_max_c(snew(n),trac_comp)
              if (parallel_IOProcessor()) &
                   write(6,2003) smin,smax

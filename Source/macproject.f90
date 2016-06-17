@@ -623,11 +623,12 @@ contains
       real(kind=dp_t), pointer :: bzp(:,:,:,:)
       real(kind=dp_t), pointer :: rp(:,:,:,:)
       real(kind=dp_t), pointer :: u0p(:,:,:,:)
-      integer :: i,ng_r,ng_b,lo(mla%dim),hi(mla%dim),dm
+      integer :: i,ng_r,ng_b,ng_u0,lo(mla%dim),hi(mla%dim),dm
 
       dm = mla%dim
       ng_r = nghost(Dh(1))
       ng_b = nghost(beta(1,1))
+      ng_u0 = nghost(u0(1))
 
       do n = 1, nlevs
          do i = 1, nfabs(Dh(n))
@@ -648,7 +649,7 @@ contains
                byp => dataptr(beta(n,2), i)
                bzp => dataptr(beta(n,3), i)
                call mk_mac_coeffs_3d(bxp(:,:,:,1),byp(:,:,:,1),bzp(:,:,:,1),&
-                                     ng_b,rp(:,:,:,rhoh_comp),u0p(:,:,:,1),ng_r,lo,hi)
+                                     ng_b,rp(:,:,:,rhoh_comp),u0p(:,:,:,1),ng_r,ng_u0,lo,hi)
             end select
          end do
       end do
@@ -701,14 +702,14 @@ contains
 
     end subroutine mk_mac_coeffs_2d
 
-    subroutine mk_mac_coeffs_3d(betax,betay,betaz,ng_b,Dh,u0,ng_r,lo,hi)
+    subroutine mk_mac_coeffs_3d(betax,betay,betaz,ng_b,Dh,u0,ng_r,ng_u0,lo,hi)
 
-      integer        , intent(in   ) :: ng_b,ng_r,lo(:),hi(:)
+      integer        , intent(in   ) :: ng_b,ng_r,ng_u0,lo(:),hi(:)
       real(kind=dp_t), intent(inout) :: betax(lo(1)-ng_b:,lo(2)-ng_b:,lo(3)-ng_b:)
       real(kind=dp_t), intent(inout) :: betay(lo(1)-ng_b:,lo(2)-ng_b:,lo(3)-ng_b:)
       real(kind=dp_t), intent(inout) :: betaz(lo(1)-ng_b:,lo(2)-ng_b:,lo(3)-ng_b:)
       real(kind=dp_t), intent(in   ) ::   Dh(lo(1)-ng_r:,lo(2)-ng_r:,lo(3)-ng_r:)
-      real(kind=dp_t), intent(in   ) ::   u0(lo(1)-ng_r:,lo(2)-ng_r:,lo(3)-ng_r:)
+      real(kind=dp_t), intent(in   ) ::   u0(lo(1)-ng_u0:,lo(2)-ng_u0:,lo(3)-ng_u0:)
 
       integer :: i,j,k
 

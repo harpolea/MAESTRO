@@ -14,7 +14,7 @@ module convert_rhoX_to_X_module
   private
 
   public :: convert_rhoX_to_X, convert_rhoh_to_h
-  
+
 contains
 
   subroutine convert_rhoX_to_X(s,flag,mla,the_bc_level)
@@ -42,12 +42,14 @@ contains
     if (flag) then
        do n=1,nlevs
           do comp=spec_comp,spec_comp+nspec-1
+              ! spec / rho
              call multifab_div_div_c(s(n),comp,s(n),rho_comp,1)
           end do
        end do
     else
        do n=1,nlevs
           do comp=spec_comp,spec_comp+nspec-1
+             ! this does spec * rho
              call multifab_mult_mult_c(s(n),comp,s(n),rho_comp,1)
           end do
        end do
@@ -74,7 +76,7 @@ contains
     end if
 
     call destroy(bpt)
-    
+
   end subroutine convert_rhoX_to_X
 
   subroutine convert_rhoh_to_h(s,flag,mla,the_bc_level)
@@ -128,7 +130,7 @@ contains
     end if
 
     call destroy(bpt)
-    
+
   end subroutine convert_rhoh_to_h
-  
+
 end module convert_rhoX_to_X_module

@@ -1,7 +1,7 @@
-! compute w0 -- the base state velocity.  This is based on the average 
+! compute w0 -- the base state velocity.  This is based on the average
 ! heating in a layer (Sbar) and the mixing (the eta quantities).  The
 ! computation of w0 for plane-parallel atmospheres was first described
-! in paper II, with modifications due to mixing in paper III.  For 
+! in paper II, with modifications due to mixing in paper III.  For
 ! spherical geometry, it was first described in paper III.
 
 module make_w0_module
@@ -17,9 +17,9 @@ module make_w0_module
 contains
 
   subroutine make_w0(w0,w0_old,w0_force,Sbar_in, &
-                     rho0_old,rho0_new,p0_old,p0_new, &
+                     Dh0_old,Dh0_new,p0_old,p0_new, &
                      gamma1bar_old,gamma1bar_new,p0_minus_pthermbar, &
-                     psi,etarho_ec,etarho_cc,dt,dtold,delta_chi_w0,is_predictor)
+                     psi,etarho_ec,etarho_cc,dt,dtold,delta_chi_w0,is_predictor,u0_1d)
 
     use parallel
     use bl_prof_module
@@ -33,8 +33,8 @@ contains
     real(kind=dp_t), intent(in   ) ::          etarho_ec(:,0:)
     real(kind=dp_t), intent(in   ) ::          etarho_cc(:,0:)
     real(kind=dp_t), intent(inout) ::           w0_force(:,0:)
-    real(kind=dp_t), intent(in   ) ::           rho0_old(:,0:)
-    real(kind=dp_t), intent(in   ) ::           rho0_new(:,0:)
+    real(kind=dp_t), intent(in   ) ::           Dh0_old(:,0:)
+    real(kind=dp_t), intent(in   ) ::           Dh0_new(:,0:)
     real(kind=dp_t), intent(in   ) ::             p0_old(:,0:)
     real(kind=dp_t), intent(in   ) ::             p0_new(:,0:)
     real(kind=dp_t), intent(in   ) ::      gamma1bar_old(:,0:)
@@ -44,6 +44,7 @@ contains
     real(kind=dp_t), intent(inout) ::       delta_chi_w0(:,0:)
     real(kind=dp_t), intent(in   ) :: dt,dtold
     logical        , intent(in   ) :: is_predictor
+    real(kind=dp_t), intent(in   ) ::              u0_1d(:,0:)
 
     integer         :: r,n
     real(kind=dp_t) :: max_w0
@@ -57,13 +58,13 @@ contains
     if (spherical .eq. 0) then
 
        if (do_planar_invsq_grav .OR. do_2d_planar_octant .eq. 1) then
-          
+
           call make_w0_planar_var_g(w0,w0_old,Sbar_in, &
-                                    rho0_old,rho0_new,p0_old,p0_new, &
+                                    Dh0_old,Dh0_new,p0_old,p0_new, &
                                     gamma1bar_old,gamma1bar_new, &
                                     p0_minus_pthermbar, &
                                     etarho_cc,w0_force, &
-                                    dt,dtold,delta_chi_w0,is_predictor)
+                                    dt,dtold,delta_chi_w0,is_predictor,u0_1d)
        else
           call make_w0_planar(w0,w0_old,Sbar_in, &
                               p0_old,p0_new,gamma1bar_old,gamma1bar_new, &
@@ -75,12 +76,12 @@ contains
     else
 
        call make_w0_spherical(w0(1,:),w0_old(1,:),Sbar_in(1,:), &
-                              rho0_old(1,:),rho0_new(1,:), &
+                              Dh0_old(1,:),Dh0_new(1,:), &
                               p0_old(1,:),p0_new(1,:), &
                               gamma1bar_old(1,:),gamma1bar_new(1,:), &
                               p0_minus_pthermbar(1,:), &
                               etarho_ec(1,:),etarho_cc(1,:),w0_force(1,:), &
-                              dt,dtold,delta_chi_w0,is_predictor)
+                              dt,dtold,delta_chi_w0,is_predictor,u0_1d)
 
     end if
 
@@ -143,7 +144,7 @@ contains
     ! do n=2,nlevs
     !   Compute w0 on edges at level n
     !   Obtain the starting value of w0 from the coarser grid
-    !   if n>1, compare the difference between w0 at top of level n to the 
+    !   if n>1, compare the difference between w0 at top of level n to the
     !           corresponding point on level n-1
     !   do i=n-1,1,-1
     !     Restrict w0 from level n to level i
@@ -155,12 +156,12 @@ contains
     nlevs = size(w0,dim=1)
 
     w0 = ZERO
-    
+
     ! Compute w0 on edges at level n
     do n=1,nlevs
 
        do j=1,numdisjointchunks(n)
-          
+
           if (n .eq. 1) then
              ! Initialize new w0 at bottom of coarse base array to zero.
              w0(1,0) = ZERO
@@ -203,21 +204,21 @@ contains
              do i=n-1,1,-1
 
                 refrat = 2**(n-i)
-                
+
                 ! Restrict w0 from level n to level i
                 do r=r_start_coord(n,j),r_end_coord(n,j)+1
                    if (mod(r,refrat) .eq. 0) then
                       w0(i,r/refrat) = w0(n,r)
                    end if
                 end do
-                
+
                 ! Offset the w0 on level i above the top of level n
                 do r=(r_end_coord(n,j)+1)/refrat+1,nr(i)
                    w0(i,r) = w0(i,r) + offset
                 end do
-                
+
              end do
-             
+
           end if
 
        end do
@@ -246,7 +247,7 @@ contains
        do j=1,numdisjointchunks(n)
 
           ! Compute the forcing term in the base state velocity
-          ! equation, - 1/rho0 grad pi0
+          ! equation, - 1/D0 grad pi0
           dt_avg = HALF * (dt + dtold)
           do r=r_start_coord(n,j),r_end_coord(n,j)
              w0_old_cen(n,r) = HALF * (w0_old(n,r) + w0_old(n,r+1))
@@ -256,7 +257,7 @@ contains
                   dtold * (w0(n,r+1)-w0(n,r))) / dt_avg
              w0_force(n,r) = (w0_new_cen(n,r)-w0_old_cen(n,r))/dt_avg + w0_avg*div_avg/dr(n)
           end do
-          
+
        end do
     end do
 
@@ -268,11 +269,11 @@ contains
 
 
   subroutine make_w0_planar_var_g(w0,w0_old,Sbar_in, &
-                                  rho0_old,rho0_new,p0_old,p0_new, &
+                                  Dh0_old,Dh0_new,p0_old,p0_new, &
                                   gamma1bar_old,gamma1bar_new, &
                                   p0_minus_pthermbar, &
                                   etarho_cc,w0_force, &
-                                  dt,dtold,delta_chi_w0,is_predictor)
+                                  dt,dtold,delta_chi_w0,is_predictor,u0_1d)
 
     use geometry, only: nr_fine, nlevs_radial, r_edge_loc, dr, &
          base_cutoff_density_coord, r_start_coord, r_end_coord, numdisjointchunks, nr
@@ -288,8 +289,8 @@ contains
     real(kind=dp_t), intent(  out) ::                 w0(:,0:)
     real(kind=dp_t), intent(in   ) ::             w0_old(:,0:)
     real(kind=dp_t), intent(in   ) ::            Sbar_in(:,0:)
-    real(kind=dp_t), intent(in   ) ::           rho0_old(:,0:)
-    real(kind=dp_t), intent(in   ) ::           rho0_new(:,0:)
+    real(kind=dp_t), intent(in   ) ::           Dh0_old(:,0:)
+    real(kind=dp_t), intent(in   ) ::           Dh0_new(:,0:)
     real(kind=dp_t), intent(in   ) ::             p0_old(:,0:)
     real(kind=dp_t), intent(in   ) ::             p0_new(:,0:)
     real(kind=dp_t), intent(in   ) ::      gamma1bar_old(:,0:)
@@ -300,6 +301,7 @@ contains
     real(kind=dp_t), intent(inout) ::       delta_chi_w0(:,0:)
     real(kind=dp_t), intent(in   ) :: dt,dtold
     logical        , intent(in   ) :: is_predictor
+    real(kind=dp_t), intent(in   ) ::              u0_1d(:,0:)
 
     ! local variables
     real(kind=dp_t), allocatable :: w0_fine(:)
@@ -308,16 +310,17 @@ contains
     real(kind=dp_t), allocatable :: p0_old_fine(:)
     real(kind=dp_t), allocatable :: p0_new_fine(:)
     real(kind=dp_t), allocatable :: p0_nph_fine(:)
-    real(kind=dp_t), allocatable :: rho0_old_fine(:)
-    real(kind=dp_t), allocatable :: rho0_new_fine(:)
-    real(kind=dp_t), allocatable :: rho0_nph_fine(:)
+    real(kind=dp_t), allocatable :: Dh0_old_fine(:)
+    real(kind=dp_t), allocatable :: Dh0_new_fine(:)
+    real(kind=dp_t), allocatable :: Dh0_nph_fine(:)
     real(kind=dp_t), allocatable :: gamma1bar_old_fine(:)
     real(kind=dp_t), allocatable :: gamma1bar_new_fine(:)
     real(kind=dp_t), allocatable :: gamma1bar_nph_fine(:)
     real(kind=dp_t), allocatable :: p0_minus_pthermbar_fine(:)
     real(kind=dp_t), allocatable :: etarho_cc_fine(:)
     real(kind=dp_t), allocatable :: Sbar_in_fine(:)
-    real(kind=dp_t), allocatable :: grav_edge_fine(:)
+    real(kind=dp_t), allocatable :: dpdr_edge_fine(:)
+    real(kind=dp_t), allocatable :: u0_fine(:)
 
     integer :: n, r, j
 
@@ -329,12 +332,12 @@ contains
     real(kind=dp_t) :: w0_new_cen(nlevs_radial,0:nr_fine-1)
 
 
-    ! The planar 1/r**2 gravity constraint equation is solved 
-    ! by calling the tridiagonal solver, just like spherical.  
+    ! The planar 1/r**2 gravity constraint equation is solved
+    ! by calling the tridiagonal solver, just like spherical.
     ! This is accomplished by putting all the requisite data
     ! on the finest basestate grid, solving for w0, and then
     ! restricting w0 back down to the coarse grid.
-    
+
 
     ! 1) allocate the finely-gridded temporary basestate arrays
     allocate(                w0_fine(0:nr_fine))
@@ -343,35 +346,37 @@ contains
     allocate(            p0_old_fine(0:nr_fine-1))
     allocate(            p0_new_fine(0:nr_fine-1))
     allocate(            p0_nph_fine(0:nr_fine-1))
-    allocate(          rho0_old_fine(0:nr_fine-1))
-    allocate(          rho0_new_fine(0:nr_fine-1))
-    allocate(          rho0_nph_fine(0:nr_fine-1))
+    allocate(          Dh0_old_fine(0:nr_fine-1))
+    allocate(          Dh0_new_fine(0:nr_fine-1))
+    allocate(          Dh0_nph_fine(0:nr_fine-1))
     allocate(     gamma1bar_old_fine(0:nr_fine-1))
     allocate(     gamma1bar_new_fine(0:nr_fine-1))
     allocate(     gamma1bar_nph_fine(0:nr_fine-1))
     allocate(p0_minus_pthermbar_fine(0:nr_fine-1))
     allocate(         etarho_cc_fine(0:nr_fine-1))
     allocate(           Sbar_in_fine(0:nr_fine-1))
-    allocate(         grav_edge_fine(0:nr_fine))
+    allocate(         dpdr_edge_fine(0:nr_fine))
+    allocate(                u0_fine(0:nr_fine-1))
 
 
     ! 2) copy the data into the temp, uniformly-gridded basestate arrays.
     call prolong_base_to_uniform(p0_old,p0_old_fine)
     call prolong_base_to_uniform(p0_new,p0_new_fine)
-    call prolong_base_to_uniform(rho0_old,rho0_old_fine)
-    call prolong_base_to_uniform(rho0_new,rho0_new_fine)
+    call prolong_base_to_uniform(Dh0_old,Dh0_old_fine)
+    call prolong_base_to_uniform(Dh0_new,Dh0_new_fine)
     call prolong_base_to_uniform(gamma1bar_old,gamma1bar_old_fine)
     call prolong_base_to_uniform(gamma1bar_new,gamma1bar_new_fine)
     call prolong_base_to_uniform(p0_minus_pthermbar,p0_minus_pthermbar_fine)
     call prolong_base_to_uniform(etarho_cc,etarho_cc_fine)
     call prolong_base_to_uniform(Sbar_in,Sbar_in_fine)
+    call prolong_base_to_uniform(u0_1d,u0_fine)
 
     ! create time-centered base-state quantities
     !$OMP PARALLEL DO PRIVATE(r)
     do r=0,nr_fine-1
        p0_nph_fine(r)        = HALF*(p0_old_fine(r)        + p0_new_fine(r))
-       rho0_nph_fine(r)      = HALF*(rho0_old_fine(r)      + rho0_new_fine(r))
-       gamma1bar_nph_fine(r) = HALF*(gamma1bar_old_fine(r) + gamma1bar_new_fine(r))       
+       Dh0_nph_fine(r)      = HALF*(Dh0_old_fine(r)      + Dh0_new_fine(r))
+       gamma1bar_nph_fine(r) = HALF*(gamma1bar_old_fine(r) + gamma1bar_new_fine(r))
     enddo
     !$OMP END PARALLEL DO
 
@@ -394,20 +399,20 @@ contains
 
        w0bar_fine(r) =  w0bar_fine(r-1) + Sbar_in_fine(r-1) * dr(nlevs_radial) &
             - (volume_discrepancy / gamma1bar_p0_avg ) * dr(nlevs_radial)
-       
+
     enddo
 
     ! 4) get the edge-centered gravity on the uniformly-gridded
     ! basestate arrays
-    call make_grav_edge_uniform(grav_edge_fine, rho0_nph_fine)
+    call make_dpdr_edge_uniform(dpdr_edge_fine, Dh0_nph_fine,p0_nph_fine,u0_fine)
 
 
     ! 5) solve for delta w0
     deltaw0_fine(:) = ZERO
 
     ! this takes the form of a tri-diagonal matrix:
-    ! A_j (dw_0)_{j-3/2} + 
-    ! B_j (dw_0)_{j-1/2} + 
+    ! A_j (dw_0)_{j-3/2} +
+    ! B_j (dw_0)_{j-1/2} +
     ! C_j (dw_0)_{j+1/2} = F_j
 
     allocate(A(0:nr_fine))
@@ -422,23 +427,23 @@ contains
     F   = ZERO
     u   = ZERO
 
-    !$OMP PARALLEL DO PRIVATE(r,dpdr)   
+    !$OMP PARALLEL DO PRIVATE(r,dpdr)
     do r=1,base_cutoff_density_coord(nlevs_radial)
-       A(r) = gamma1bar_nph_fine(r-1) * p0_nph_fine(r-1) 
+       A(r) = gamma1bar_nph_fine(r-1) * p0_nph_fine(r-1)
        A(r) = A(r) / dr(nlevs_radial)**2
 
        dpdr = (p0_nph_fine(r)-p0_nph_fine(r-1))/dr(nlevs_radial)
 
        B(r) = -(gamma1bar_nph_fine(r-1) * p0_nph_fine(r-1) + &
-                gamma1bar_nph_fine(r  ) * p0_nph_fine(r  )) / dr(nlevs_radial)**2 
+                gamma1bar_nph_fine(r  ) * p0_nph_fine(r  )) / dr(nlevs_radial)**2
        B(r) = B(r) - TWO * dpdr / (r_edge_loc(nlevs_radial,r))
 
-       C(r) = gamma1bar_nph_fine(r) * p0_nph_fine(r) 
+       C(r) = gamma1bar_nph_fine(r) * p0_nph_fine(r)
        C(r) = C(r) / dr(nlevs_radial)**2
 
-       F(r) = TWO * dpdr * w0bar_fine(r) / r_edge_loc(nlevs_radial,r) - &
-              grav_edge_fine(r) * (etarho_cc_fine(r) - etarho_cc_fine(r-1)) / &
-              dr(nlevs_radial)
+       F(r) = TWO * dpdr * w0bar_fine(r) / r_edge_loc(nlevs_radial,r) + &
+              dpdr_edge_fine(r) * (etarho_cc_fine(r) - etarho_cc_fine(r-1)) / &
+              (dr(nlevs_radial) * HALF*(Dh0_nph_fine(r) * u0_fine(r) + Dh0_nph_fine(r-1) * u0_fine(r-1)))
     end do
     !$OMP END PARALLEL DO
 
@@ -501,7 +506,7 @@ contains
        do j=1,numdisjointchunks(n)
 
           ! Compute the forcing term in the base state velocity
-          ! equation, - 1/rho0 grad pi0
+          ! equation, - 1/D0 grad pi0
           dt_avg = HALF * (dt + dtold)
           do r=r_start_coord(n,j),r_end_coord(n,j)
              w0_old_cen(n,r) = HALF * (w0_old(n,r) + w0_old(n,r+1))
@@ -511,7 +516,7 @@ contains
                   dtold * (w0(n,r+1)-w0(n,r))) / dt_avg
              w0_force(n,r) = (w0_new_cen(n,r)-w0_old_cen(n,r))/dt_avg + w0_avg*div_avg/dr(n)
           end do
-          
+
        end do
     end do
 
@@ -521,11 +526,11 @@ contains
   end subroutine make_w0_planar_var_g
 
   subroutine make_w0_spherical(w0,w0_old,Sbar_in, &
-                               rho0_old,rho0_new,p0_old,p0_new, &
+                               Dh0_old,Dh0_new,p0_old,p0_new, &
                                gamma1bar_old,gamma1bar_new, &
                                p0_minus_pthermbar, &
                                etarho_ec,etarho_cc,w0_force, &
-                               dt,dtold,delta_chi_w0,is_predictor)
+                               dt,dtold,delta_chi_w0,is_predictor,u0_1d)
 
     use geometry, only: nr_fine, r_edge_loc, dr, r_cc_loc, &
          base_cutoff_density_coord
@@ -538,8 +543,8 @@ contains
     real(kind=dp_t), intent(  out) ::                 w0(0:)
     real(kind=dp_t), intent(in   ) ::             w0_old(0:)
     real(kind=dp_t), intent(in   ) ::            Sbar_in(0:)
-    real(kind=dp_t), intent(in   ) ::           rho0_old(0:)
-    real(kind=dp_t), intent(in   ) ::           rho0_new(0:)
+    real(kind=dp_t), intent(in   ) ::           Dh0_old(0:)
+    real(kind=dp_t), intent(in   ) ::           Dh0_new(0:)
     real(kind=dp_t), intent(in   ) ::             p0_old(0:)
     real(kind=dp_t), intent(in   ) ::             p0_new(0:)
     real(kind=dp_t), intent(in   ) ::      gamma1bar_old(0:)
@@ -551,6 +556,7 @@ contains
     real(kind=dp_t), intent(inout) ::       delta_chi_w0(:,0:)
     real(kind=dp_t), intent(in   ) :: dt,dtold
     logical,         intent(in   ) :: is_predictor
+    real(kind=dp_t), intent(in   ) ::              u0_1d(:,0:)
 
     ! Local variables
     integer                    :: r
@@ -559,7 +565,6 @@ contains
     real(kind=dp_t) ::    w0_old_cen(0:nr_fine-1)
     real(kind=dp_t) ::    w0_new_cen(0:nr_fine-1)
     real(kind=dp_t) :: gamma1bar_nph(0:nr_fine-1)
-    real(kind=dp_t) ::        p0_nph(0:nr_fine-1)
     real(kind=dp_t) ::             A(0:nr_fine)
     real(kind=dp_t) ::             B(0:nr_fine)
     real(kind=dp_t) ::             C(0:nr_fine)
@@ -568,15 +573,16 @@ contains
     real(kind=dp_t) ::  w0_from_Sbar(0:nr_fine)
 
     ! These need the extra dimension so we can call make_grav_edge
-    real(kind=dp_t) ::  rho0_nph(1,0:nr_fine-1)
-    real(kind=dp_t) :: grav_edge(1,0:nr_fine-1)
+    real(kind=dp_t) ::  Dh0_nph(1,0:nr_fine-1)
+    real(kind=dp_t) :: dpdr_edge(1,0:nr_fine-1)
+    real(kind=dp_t) ::        p0_nph(1,0:nr_fine-1)
 
     ! create time-centered base-state quantities
     !$OMP PARALLEL DO PRIVATE(r)
     do r=0,nr_fine-1
-       p0_nph(r)        = HALF*(p0_old(r)        + p0_new(r))
-       rho0_nph(1,r)    = HALF*(rho0_old(r)      + rho0_new(r))
-       gamma1bar_nph(r) = HALF*(gamma1bar_old(r) + gamma1bar_new(r))       
+       p0_nph(1,r)        = HALF*(p0_old(r)        + p0_new(r))
+       Dh0_nph(1,r)    = HALF*(Dh0_old(r)      + Dh0_new(r))
+       gamma1bar_nph(r) = HALF*(gamma1bar_old(r) + gamma1bar_new(r))
     enddo
     !$OMP END PARALLEL DO
 
@@ -588,14 +594,14 @@ contains
 
     do r=1,nr_fine
 
-       if (rho0_old(r-1) .gt. base_cutoff_density) then
+       if (Dh0_old(r-1) .gt. base_cutoff_density) then
           volume_discrepancy = dpdt_factor * p0_minus_pthermbar(r-1)/dt
        else
           volume_discrepancy = ZERO
        endif
 
        w0_from_Sbar(r) = w0_from_Sbar(r-1) + dr(1) * Sbar_in(r-1) * r_cc_loc(1,r-1)**2 - &
-            dr(1)* volume_discrepancy * r_cc_loc(1,r-1)**2 / (gamma1bar_nph(r-1)*p0_nph(r-1))
+            dr(1)* volume_discrepancy * r_cc_loc(1,r-1)**2 / (gamma1bar_nph(r-1)*p0_nph(1,r-1))
 
     end do
 
@@ -606,12 +612,12 @@ contains
     !$OMP END PARALLEL DO
 
     ! make the edge-centered gravity
-    call make_grav_edge(grav_edge,rho0_nph)
+    call make_dpdr_edge(dpdr_edge,Dh0_nph,p0_nph,u0_1d)
 
     ! NOTE:  now we solve for the remainder, (r^2 * delta w0)
     ! this takes the form of a tri-diagonal matrix:
-    ! A_j (r^2 dw_0)_{j-3/2} + 
-    ! B_j (r^2 dw_0)_{j-1/2} + 
+    ! A_j (r^2 dw_0)_{j-3/2} +
+    ! B_j (r^2 dw_0)_{j-1/2} +
     ! C_j (r^2 dw_0)_{j+1/2} = F_j
 
     A   = ZERO
@@ -619,30 +625,30 @@ contains
     C   = ZERO
     F   = ZERO
     u   = ZERO
-   
-    ! Note that we are solving for (r^2 delta w0), not just w0. 
+
+    ! Note that we are solving for (r^2 delta w0), not just w0.
 
     !$OMP PARALLEL DO PRIVATE(r,dpdr)
     do r=1,base_cutoff_density_coord(1)
-       A(r) = gamma1bar_nph(r-1) * p0_nph(r-1) / r_cc_loc(1,r-1)**2
+       A(r) = gamma1bar_nph(r-1) * p0_nph(1,r-1) / r_cc_loc(1,r-1)**2
        A(r) = A(r) / dr(1)**2
 
-       B(r) = -( gamma1bar_nph(r-1) * p0_nph(r-1) / r_cc_loc(1,r-1)**2 &
-                +gamma1bar_nph(r  ) * p0_nph(r  ) / r_cc_loc(1,r  )**2 ) / dr(1)**2 
+       B(r) = -( gamma1bar_nph(r-1) * p0_nph(1,r-1) / r_cc_loc(1,r-1)**2 &
+                +gamma1bar_nph(r  ) * p0_nph(1,r  ) / r_cc_loc(1,r  )**2 ) / dr(1)**2
 
-       dpdr = (p0_nph(r)-p0_nph(r-1))/dr(1)
+       dpdr = (p0_nph(1,r)-p0_nph(1,r-1))/dr(1)
 
        B(r) = B(r) - four * dpdr / (r_edge_loc(1,r))**3
 
-       C(r) = gamma1bar_nph(r) * p0_nph(r) / r_cc_loc(1,r)**2
+       C(r) = gamma1bar_nph(r) * p0_nph(1,r) / r_cc_loc(1,r)**2
        C(r) = C(r) / dr(1)**2
 
        F(r) = four * dpdr * w0_from_Sbar(r) / r_edge_loc(1,r) - &
-              grav_edge(1,r) * (r_cc_loc(1,r  )**2 * etarho_cc(r  ) - &
+              dpdr_edge(1,r) * (r_cc_loc(1,r  )**2 * etarho_cc(r  ) - &
               r_cc_loc(1,r-1)**2 * etarho_cc(r-1)) / &
               (dr(1) * r_edge_loc(1,r)**2) - &
               four * M_PI * Gconst * HALF * &
-              (rho0_nph(1,r) + rho0_nph(1,r-1)) * etarho_ec(r)
+              (Dh0_nph(1,r) + Dh0_nph(1,r-1)) * etarho_ec(r)
     end do
     !$OMP END PARALLEL DO
 
@@ -674,7 +680,7 @@ contains
             *r_edge_loc(1,base_cutoff_density_coord(1)+1)**2/r_edge_loc(1,r)**2
     end do
 
-    ! Compute the forcing term in the base state velocity equation, - 1/rho0 grad pi0 
+    ! Compute the forcing term in the base state velocity equation, - 1/D0 grad pi0
     dt_avg = HALF * (dt + dtold)
 
     !$OMP PARALLEL DO PRIVATE(r,w0_avg,div_avg)
@@ -688,5 +694,5 @@ contains
     !$OMP END PARALLEL DO
 
   end subroutine make_w0_spherical
-  
+
 end module make_w0_module

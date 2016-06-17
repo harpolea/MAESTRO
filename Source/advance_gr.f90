@@ -184,6 +184,7 @@ contains
     real(kind=dp_t), allocatable ::       div_coeff_edge(:,:)
     real(kind=dp_t), allocatable ::  D0_predicted_edge(:,:)
     real(kind=dp_t), allocatable ::         delta_chi_w0(:,:)
+    real(kind=dp_t), pointer :: sp(:,:,:,:)
 
     integer    :: i,n,comp,proj_type,nlevs,dm
     real(dp_t) :: halfdt
@@ -392,9 +393,9 @@ contains
 
        call average(mla,Source_nph,Sbar,dx,1)
 
-       call make_w0(w0,w0_old,w0_force,Sbar,D0_old,D0_old,p0_old,p0_old,gamma1bar_old, &
+       call make_w0(w0,w0_old,w0_force,Sbar,Dh0_old,Dh0_old,p0_old,p0_old,gamma1bar_old, &
                     gamma1bar_old,p0_minus_peosbar,psi,etarho_ec,etarho_cc,dt,dtold, &
-                    delta_chi_w0,.true.)
+                    delta_chi_w0,.true.,u0_1d)
 
        if (spherical .eq. 1) then
           call make_w0mac(mla,w0,w0mac,dx,the_bc_tower%bc_tower_array)
@@ -544,6 +545,8 @@ contains
        ! copy temperature into s2 for seeding eos calls only
        ! temperature will be overwritten later after enthalpy advance
        call multifab_copy_c(s2(n), temp_comp, s1(n), temp_comp, 1, nghost(sold(n)))
+       ! copy across Dh
+       call multifab_copy_c(s2(n), rhoh_comp, s1(n), rhoh_comp, 1, nghost(sold(n)))
     end do
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
@@ -586,6 +589,15 @@ contains
        endif
     end if
 
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(s2(n))
+    !        sp => dataptr(s2(n), i)
+    !    enddo
+    !enddo
+
+    !print *, 'sp', sp(:,:,:,rhoh_comp)
+
+    ! FIXME; I think this should go after the enthalpy update in 4H
     ! 4D
 
     ! Correct the base state by "averaging"
@@ -911,9 +923,9 @@ contains
           Sbar = Sbar + delta_gamma1_termbar
        end if
 
-       call make_w0(w0,w0_old,w0_force,Sbar,D0_old,D0_new,p0_old,p0_new, &
+       call make_w0(w0,w0_old,w0_force,Sbar,Dh0_old,Dh0_new,p0_old,p0_new, &
                     gamma1bar_old,gamma1bar,p0_minus_peosbar, &
-                    psi,etarho_ec,etarho_cc,dt,dtold,delta_chi_w0,.false.)
+                    psi,etarho_ec,etarho_cc,dt,dtold,delta_chi_w0,.false.,u0_1d)
 
        if (spherical .eq. 1) then
           call make_w0mac(mla,w0,w0mac,dx,the_bc_tower%bc_tower_array)

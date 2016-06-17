@@ -21,7 +21,7 @@ contains
 
   subroutine divu_iter(istep_divu_iter,uold,sold,pi,gpi,thermal, &
                        Source_old,normal,hgrhs,dSdt,div_coeff_old,rho0_old,Dh0_old,p0_old,gamma1bar, &
-                       tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha,beta)
+                       tempbar_init,w0,grav_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha,beta,u0_1d)
 
     use variables, only: nscal, foextrap_comp
     use network, only: nspec
@@ -69,6 +69,7 @@ contains
     type(multifab) , intent(in   ) :: gam(:)
     type(multifab) , intent(in   ) :: alpha(:)
     type(multifab) , intent(in   ) :: beta(:)
+    real(kind=dp_t), intent(in   ) :: u0_1d(:,0:)
 
     ! local
     integer        :: n,ng_s,nlevs
@@ -173,9 +174,9 @@ contains
 
     if (evolve_base_state) then
        call average(mla,Source_old,Sbar,dx,1)
-       call make_w0(w0,w0,w0_force,Sbar,rho0_old,rho0_old,p0_old,p0_old, &
+       call make_w0(w0,w0,w0_force,Sbar,Dh0_old,Dh0_old,p0_old,p0_old, &
                     gamma1bar,gamma1bar,p0_minus_pthermbar, &
-                    psi,etarho_ec,etarho_cc,dt,dt,delta_chi_w0,.true.)
+                    psi,etarho_ec,etarho_cc,dt,dt,delta_chi_w0,.true.,u0_1d)
     end if
 
     ! This needs to be a separate loop so Sbar is fully defined before

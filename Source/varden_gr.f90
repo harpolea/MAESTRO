@@ -471,7 +471,7 @@ subroutine varden()
 
         call divu_iter(istep_divu_iter,uold,sold,pi,gpi,thermal2, &
                        Source_old,normal,hgrhs,dSdt,div_coeff_old,D0_old,Dh0_old,p0_old, &
-                       gamma1bar,tempbar_init,w0,dpdr_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha,beta)
+                       gamma1bar,tempbar_init,w0,dpdr_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha,beta,u0_1d)
 
      end do
 

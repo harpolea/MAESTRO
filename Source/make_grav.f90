@@ -6,7 +6,7 @@ module make_grav_module
 
   private
 
-  public :: make_grav_cell, make_dpdr_cell, make_grav_edge, make_dpdr_edge, make_grav_edge_uniform
+  public :: make_grav_cell, make_dpdr_cell, make_grav_edge, make_dpdr_edge, make_grav_edge_uniform, make_dpdr_edge_uniform
 
 contains
 
@@ -613,9 +613,9 @@ contains
     ! The base state uses 0-based indexing, so grav_edge does too.
 
     real(kind=dp_t), intent(  out) :: dpdr_edge(:,0:)
-    real(kind=dp_t), intent(inout) ::   p0(:,0:)
-    real(kind=dp_t), intent(inout) ::   Dh0(:,0:)
-    real(kind=dp_t), intent(inout) ::   u0_1d(:,0:)
+    real(kind=dp_t), intent(in) ::   p0(:,0:)
+    real(kind=dp_t), intent(in) ::   Dh0(:,0:)
+    real(kind=dp_t), intent(in) ::   u0_1d(:,0:)
 
     ! Local variables
     integer                      :: r, n, i
@@ -840,5 +840,99 @@ contains
     end if
 
   end subroutine make_grav_edge_uniform
+
+  subroutine make_dpdr_edge_uniform(dpdr_edge_fine,Dh0_fine,p0_fine,u0_1d)
+
+    ! a special version of the make_grav_edge routine that takes a
+    ! uniformly-gridded, single level density array at the finest base
+    ! state resolution and returns the uniformly-gridded, single-level
+    ! gravity at the same resolution
+
+    use bl_constants_module
+    use geometry, only: spherical, r_edge_loc, nr_fine, nlevs_radial, nr
+    use probin_module, only: grav_const, base_cutoff_density, &
+         do_planar_invsq_grav, planar_invsq_mass, do_2d_planar_octant, g, Rr, c
+    use fundamental_constants_module, only: Gconst
+
+    ! compute the base state gravity at the cell edges (grav_edge(1)
+    ! is the gravitational acceleration at the left edge of zone 1).
+    ! The base state uses 0-based indexing, so grav_edge does too.
+
+    real(kind=dp_t), intent(  out) :: dpdr_edge_fine(0:)
+    real(kind=dp_t), intent(in   ) ::      Dh0_fine(0:)
+    real(kind=dp_t), intent(in   ) ::      p0_fine(0:)
+    real(kind=dp_t), intent(in   ) ::      u0_1d(0:)
+
+    ! Local variables
+    integer                      :: r
+    real(kind=dp_t)              :: mencl
+
+    if (spherical .eq. 0) then
+
+       if (do_planar_invsq_grav)  then
+
+          ! we are doing a plane-parallel geometry with a 1/r**2
+          ! gravitational acceleration.  The mass is assumed to be
+          ! at the origin.  The mass in the computational domain
+          ! does not contribute to the gravitational acceleration.
+          do r = 0, nr(nlevs_radial)-1
+             dpdr_edge_fine(r) = -(Dh0_fine(r) + p0_fine(r) * &
+                 u0_1d(r)) * g / ((c**2 * &
+                 (Rr + 2.0d0 * r_edge_loc(nlevs_radial,r)) - 2.0d0 * g) * u0_1d(r))
+          enddo
+
+       else if (do_2d_planar_octant .eq. 1) then
+
+          ! compute gravity as in spherical geometry
+          dpdr_edge_fine(0) = ZERO
+          mencl = ZERO
+
+          do r=1,nr_fine-1
+
+             ! only add to the enclosed mass if the density is
+             ! > base_cutoff_density
+             if (Dh0_fine(r-1) > base_cutoff_density) then
+                mencl = mencl + FOUR3RD*M_PI * &
+                     (r_edge_loc(nlevs_radial,r) - r_edge_loc(nlevs_radial,r-1)) * &
+                     (r_edge_loc(nlevs_radial,r)**2 + &
+                     r_edge_loc(nlevs_radial,r)*r_edge_loc(nlevs_radial,r-1) + &
+                     r_edge_loc(nlevs_radial,r-1)**2) * Dh0_fine(r-1)
+             endif
+
+             dpdr_edge_fine(r) = -Gconst * mencl / r_edge_loc(nlevs_radial,r)**2
+
+          end do
+
+       else
+
+          ! constant gravity
+          dpdr_edge_fine(:) = grav_const
+
+       endif
+
+    else
+
+       dpdr_edge_fine(0) = ZERO
+       mencl = ZERO
+
+       do r=1,nr_fine-1
+
+          ! only add to the enclosed mass if the density is
+          ! > base_cutoff_density
+          if (Dh0_fine(r-1) > base_cutoff_density) then
+             mencl = mencl + FOUR3RD*M_PI * &
+                  (r_edge_loc(nlevs_radial,r) - r_edge_loc(nlevs_radial,r-1)) * &
+                  (r_edge_loc(nlevs_radial,r)**2 + &
+                   r_edge_loc(nlevs_radial,r)*r_edge_loc(nlevs_radial,r-1) + &
+                   r_edge_loc(nlevs_radial,r-1)**2) * Dh0_fine(r-1)
+          endif
+
+          dpdr_edge_fine(r) = -Gconst * mencl / r_edge_loc(nlevs_radial,r)**2
+
+       end do
+
+    end if
+
+  end subroutine make_dpdr_edge_uniform
 
 end module make_grav_module

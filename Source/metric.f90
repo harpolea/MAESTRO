@@ -168,9 +168,14 @@ contains
 
                 do i = 1, 3
                     do j = 1, 3
-                        Wp(:,:,:,1) = Wp(:,:,:,1) + eye(i,j) * &
-                        gamp(:,:,:,i) * (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) + betap(:,:,:,i)) * &
-                        (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j) + betap(:,:,:,j)) / alphap(:,:,:,1)**2
+                        Wp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) = Wp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) + &
+                        eye(i,j) * &
+                        gamp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) * &
+                        (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i)) * &
+                        (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j)) / &
+                        alphap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)**2
                     enddo
                 enddo
                 Wp(:,:,:,1) = ONE / sqrt(1.d0 - Wp(:,:,:,1)/c**2)
