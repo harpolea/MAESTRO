@@ -20,7 +20,7 @@ module mk_vel_force_module
 contains
 
   subroutine mk_vel_force(vel_force,is_final_update, &
-                          uold,umac,w0,w0mac,gpi,s,index_rho,index_Dh,normal, &
+                          uold,umac,w0,w0mac,gpi,s,index_rho,index_rhoh,normal, &
                           D0,Dh0,dpdr,dx,w0_force,w0_force_cart,the_bc_level,mla, &
                           do_add_utilde_force,u0,chrls,gam)
 
@@ -47,7 +47,7 @@ contains
     type(multifab) , intent(in   ) :: gpi(:)
     type(multifab) , intent(in   ) :: s(:)
     integer                        :: index_rho
-    integer                        :: index_Dh
+    integer                        :: index_rhoh
     real(kind=dp_t), intent(in   ) :: D0(:,0:)
     real(kind=dp_t), intent(in   ) :: Dh0(:,0:)
     real(kind=dp_t), intent(in   ) :: dpdr(:,0:)
@@ -201,7 +201,7 @@ contains
                                           uop(:,:,:,:),ng_uo, &
                                           ump(:,:,:,1),vmp(:,:,:,1),wmp(:,:,:,1),ng_um, &
                                           w0(n,:), &
-                                          gpp(:,:,:,:),ng_gp,rp(:,:,:,index_rho),rp(:,:,:,index_Dh),ng_s, &
+                                          gpp(:,:,:,:),ng_gp,rp(:,:,:,index_rho),rp(:,:,:,index_rhoh),ng_s, &
                                           D0(n,:),Dh0(n,:),dpdr(n,:),w0_force(n,:),lo,hi,n, &
                                           do_add_utilde_force,u0p(:,:,:,1), &
                                           ng_u0,chrls(n,:,:,:,:,:,:),gamp(:,:,:,:))

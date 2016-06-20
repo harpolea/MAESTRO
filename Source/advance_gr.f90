@@ -128,7 +128,7 @@ contains
     type(multifab),  intent(inout) :: beta(:)
 
     ! local
-    type(multifab) ::             Dhalf(mla%nlevel)
+    type(multifab) ::             Dh_half(mla%nlevel)
     type(multifab) ::       w0_force_cart(mla%nlevel)
     type(multifab) ::              macrhs(mla%nlevel)
     type(multifab) ::              macphi(mla%nlevel)
@@ -737,13 +737,6 @@ contains
     end do
     call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
-    !do n = 1, nlevs
-    !    do i = 1, nfabs(s_prim(n))
-    !        sp => dataptr(s_prim(n), i)
-    !    enddo
-    !    print *, 'sp', sp(20,:,:,rho_comp)
-    !enddo
-
     ! now update temperature
     if (use_tfromp) then
        call makeTfromRhoP(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
@@ -999,10 +992,17 @@ contains
     end do
 
     do n=1,nlevs
-       call multifab_build(Dhalf(n), mla%la(n), 1, 1)
+       call multifab_build(Dh_half(n), mla%la(n), 1, 1)
     end do
 
-    call make_at_halftime(Dhalf,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
+    call make_at_halftime(Dh_half,sold,snew,rhoh_comp,1,the_bc_tower%bc_tower_array,mla)
+
+    do n = 1, nlevs
+        do i = 1, nfabs(Dh_half(n))
+            sp => dataptr(Dh_half(n), i)
+        enddo
+        !print *, 'sp', sp(:,:,:,:)
+    enddo
 
     ! MAC projection !
     if (spherical .eq. 1) then
@@ -1015,7 +1015,7 @@ contains
        call make_s0mac(mla,div_coeff_nph,div_coeff_cart_edge,dx,foextrap_comp, &
                        the_bc_tower%bc_tower_array)
 
-       call macproject(mla,umac,macphi,Dhalf,u0,dx,the_bc_tower,macrhs, &
+       call macproject(mla,umac,macphi,Dh_half,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_cart_edge=div_coeff_cart_edge)
 
        do n=1,nlevs
@@ -1025,7 +1025,7 @@ contains
        end do
     else
        call cell_to_edge(div_coeff_nph,div_coeff_edge)
-       call macproject(mla,umac,macphi,Dhalf,u0,dx,the_bc_tower,macrhs, &
+       call macproject(mla,umac,macphi,Dh_half,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_1d=div_coeff_nph,div_coeff_1d_edge=div_coeff_edge)
     end if
 
@@ -1045,7 +1045,7 @@ contains
     end if
 
     do n=1,nlevs
-       call destroy(Dhalf(n))
+       call destroy(Dh_half(n))
        call destroy(macrhs(n))
        call destroy(macphi(n))
     end do
@@ -1077,6 +1077,8 @@ contains
        ! copy temperature into s2 for seeding eos calls only
        ! temperature will be overwritten later after enthalpy advance
        call multifab_copy_c(s2(n), temp_comp, s1(n), temp_comp, 1, nghost(sold(n)))
+       ! copy across Dh
+       call multifab_copy_c(s2(n), rhoh_comp, s1(n), rhoh_comp, 1, nghost(sold(n)))
 
        call setval(etarhoflux(n),ZERO,all=.true.)
     end do
@@ -1124,6 +1126,13 @@ contains
     end do
 
     ! 8D
+
+    do n = 1, nlevs
+        do i = 1, nfabs(s2(n))
+            sp => dataptr(s2(n), i)
+        enddo
+        print *, 'sp', sp(20,:,:,rhoh_comp)
+    enddo
 
     ! Correct the base state using "averaging"
     if (use_etarho .and. evolve_base_state) then
@@ -1420,12 +1429,12 @@ contains
 
     ! Define rho at half time using the new rho from Step 8
     do n=1,nlevs
-       call multifab_build(Dhalf(n), mla%la(n), 1, 1)
+       call multifab_build(Dh_half(n), mla%la(n), 1, 1)
     end do
 
-    call make_at_halftime(Dhalf,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
+    call make_at_halftime(Dh_half,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
 
-    call velocity_advance(mla,uold,unew,sold,Dhalf,umac,gpi,normal,w0,w0mac,w0_force, &
+    call velocity_advance(mla,uold,unew,sold,Dh_half,umac,gpi,normal,w0,w0mac,w0_force, &
                           w0_force_cart,D0_old,Dh0_old,D0_nph,Dh0_nph,dpdr_cell_old,dpdr_cell_nph, &
                           dx,dt,the_bc_tower%bc_tower_array,sponge, &
                           u0,chrls,gam)
@@ -1538,7 +1547,7 @@ contains
     call put_1d_array_on_cart(div_coeff_nph,div_coeff_3d,foextrap_comp,.false., &
                               .false.,dx,the_bc_tower%bc_tower_array,mla)
 
-    call hgproject(proj_type,mla,unew,uold,Dhalf,pi,gpi,dx,dt,the_bc_tower,div_coeff_3d,hgrhs)
+    call hgproject(proj_type,mla,unew,uold,Dh_half,pi,gpi,dx,dt,the_bc_tower,div_coeff_3d,hgrhs)
 
     do n = 1, nlevs
        call multifab_build(pi_cc(n), mla%la(n), 1, 0)
@@ -1554,7 +1563,7 @@ contains
 
     do n=1,nlevs
        call destroy(div_coeff_3d(n))
-       call destroy(Dhalf(n))
+       call destroy(Dh_half(n))
     end do
 
     ! If doing pressure iterations then put hgrhs_old into hgrhs to be returned to varden.

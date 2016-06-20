@@ -13,7 +13,7 @@ module velocity_advance_module
 
 contains
 
-  subroutine velocity_advance(mla,uold,unew,sold,rhohalf,umac,gpi, &
+  subroutine velocity_advance(mla,uold,unew,sold,Dh_half,umac,gpi, &
                               normal,w0,w0mac,w0_force,w0_force_cart_vec, &
                               rho0_old,Dh0_old,rho0_nph,Dh0_nph,grav_cell_old,grav_cell_nph,dx,dt, &
                               the_bc_level,sponge,u0,chrls,gam)
@@ -31,7 +31,7 @@ contains
     type(multifab) , intent(in   ) :: uold(:)
     type(multifab) , intent(inout) :: unew(:)
     type(multifab) , intent(in   ) :: sold(:)
-    type(multifab) , intent(in   ) :: rhohalf(:)
+    type(multifab) , intent(in   ) :: Dh_half(:)
     type(multifab) , intent(inout) :: umac(:,:)
     type(multifab) , intent(in   ) :: gpi(:)
     type(multifab) , intent(in   ) :: normal(:)
@@ -121,12 +121,12 @@ contains
     call addw0(umac,the_bc_level,mla,w0,w0mac,mult=-ONE)
 
     !********************************************************
-    !     Now create the force at half-time using rhohalf
+    !     Now create the force at half-time using Dh_half
     !********************************************************
 
     is_final_update = .true.
     call mk_vel_force(force,is_final_update, &
-                      uold,umac,w0,w0mac,gpi,rhohalf,1,rhoh_comp,normal, &
+                      uold,umac,w0,w0mac,gpi,Dh_half,1,rhoh_comp,normal, &
                       rho0_nph,Dh0_nph,grav_cell_nph,dx, &
                       w0_force,w0_force_cart_vec,the_bc_level,mla,.true., &
                       u0(:),chrls,gam(:))
