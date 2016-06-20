@@ -1127,12 +1127,12 @@ contains
 
     ! 8D
 
-    do n = 1, nlevs
-        do i = 1, nfabs(s2(n))
-            sp => dataptr(s2(n), i)
-        enddo
-        print *, 'sp', sp(20,:,:,rhoh_comp)
-    enddo
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(s2(n))
+    !        sp => dataptr(s2(n), i)
+    !    enddo
+    !    print *, 'sp', sp(20,:,:,rhoh_comp)
+    !enddo
 
     ! Correct the base state using "averaging"
     if (use_etarho .and. evolve_base_state) then
@@ -1306,7 +1306,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,u0,alpha,beta,gam)
+                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam)
 
     do n=1,nlevs
        call destroy(s2(n))
@@ -1429,10 +1429,12 @@ contains
 
     ! Define rho at half time using the new rho from Step 8
     do n=1,nlevs
-       call multifab_build(Dh_half(n), mla%la(n), 1, 1)
+       call multifab_build(Dh_half(n), mla%la(n), 2, 1)
     end do
 
-    call make_at_halftime(Dh_half,sold,snew,rho_comp,1,the_bc_tower%bc_tower_array,mla)
+    call make_at_halftime(Dh_half,sold,snew,rhoh_comp,rhoh_comp,the_bc_tower%bc_tower_array,mla)
+
+    call make_at_halftime(Dh_half,sold,snew,rho_comp,rho_comp,the_bc_tower%bc_tower_array,mla)
 
     call velocity_advance(mla,uold,unew,sold,Dh_half,umac,gpi,normal,w0,w0mac,w0_force, &
                           w0_force_cart,D0_old,Dh0_old,D0_nph,Dh0_nph,dpdr_cell_old,dpdr_cell_nph, &

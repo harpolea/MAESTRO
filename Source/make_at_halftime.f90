@@ -125,7 +125,7 @@ contains
     end do
 
     call ml_restrict_and_fill(nlevs, phihalf, mla%mba%rr, the_bc_level, &
-         icomp=1, bcomp=dm+in_comp, nc=1, ng=ng_h)
+         icomp=out_comp, bcomp=dm+in_comp, nc=1, ng=ng_h)
 
   end subroutine make_at_halftime
 
