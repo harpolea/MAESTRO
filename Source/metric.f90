@@ -537,7 +537,7 @@ contains
       if (xm*xn.gt.zero) then           ! check if function changes sign
           !print *,'OOPS'
          xl = 0.0d0
-         xh = 10.0d0**(14)
+         xh = 10.0d0**(30)
       endif
       if (xm > zero) then               ! Rearrange so that f(xl)< 0.d0 < f(xh)
          xm = xl
@@ -565,7 +565,7 @@ contains
             xm = xn                       ! update successful Newton-Raphson step
          endif
       enddo
-      fail = .true.
+      fail = .false.
       if (error > TOLERANCE) then       ! Check if solution converged
          write(*,*) 'solution did not converge, xn, NonLinearEquation(xn),D(xn)'
          write(*,*) xn, f, error

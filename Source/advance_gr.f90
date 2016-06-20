@@ -731,19 +731,18 @@ contains
 
     !!!! This needs the primitive variables
     do n=1,nlevs
-       ng_s = nghost(snew(n))
+       ng_s = nghost(s2(n))
        call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
        call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
     end do
     call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
-    do n = 1, nlevs
-        do i = 1, nfabs(s2(n))
-            sp => dataptr(s2(n), i)
-        enddo
-    enddo
-
-    print *, 'sp', sp(:,:,:,rho_comp)
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(s_prim(n))
+    !        sp => dataptr(s_prim(n), i)
+    !    enddo
+    !    print *, 'sp', sp(20,:,:,rho_comp)
+    !enddo
 
     ! now update temperature
     if (use_tfromp) then
