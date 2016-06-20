@@ -15,8 +15,8 @@ contains
 
   subroutine enthalpy_advance(mla,which_step,uold,sold,snew,sedge,sflux,scal_force,&
                               thermal,umac,w0,w0mac, &
-                              rho0_old,rhoh0_old,rho0_new,rhoh0_new,p0_old,p0_new, &
-                              tempbar,psi,dx,dt,the_bc_level)
+                              D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
+                              tempbar,psi,dx,dt,the_bc_level,u0_1d,alpha,beta,gam)
 
     use bl_prof_module
     use bl_constants_module
@@ -33,11 +33,12 @@ contains
     use rhoh_vs_t_module
     use geometry,      only: spherical, nr_fine, r_start_coord, r_end_coord, &
          numdisjointchunks, nlevs_radial
-    use variables,     only: temp_comp, rho_comp, rhoh_comp, foextrap_comp
+    use variables,     only: temp_comp, rho_comp, rhoh_comp, foextrap_comp, nscal
     use probin_module, only: enthalpy_pred_type, verbose, bds_type
     use pred_parameters
     use modify_scal_force_module
     use convert_rhoX_to_X_module
+    use metric_module, only: cons_to_prim
 
     type(ml_layout), intent(inout) :: mla
     integer        , intent(in   ) :: which_step
@@ -51,28 +52,35 @@ contains
     type(multifab) , intent(inout) :: umac(:,:)
     real(kind=dp_t), intent(in   ) :: w0(:,0:)
     type(multifab) , intent(in   ) :: w0mac(:,:)
-    real(kind=dp_t), intent(in   ) :: rho0_old(:,0:)
-    real(kind=dp_t), intent(in   ) :: rhoh0_old(:,0:)
-    real(kind=dp_t), intent(in   ) :: rho0_new(:,0:)
-    real(kind=dp_t), intent(in   ) :: rhoh0_new(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_old(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0_old(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_new(:,0:)
+    real(kind=dp_t), intent(in   ) :: Dh0_new(:,0:)
     real(kind=dp_t), intent(in   ) :: p0_old(:,0:)
     real(kind=dp_t), intent(in   ) :: p0_new(:,0:)
     real(kind=dp_t), intent(in   ) :: tempbar(:,0:)
     real(kind=dp_t), intent(in   ) :: psi(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:),dt
     type(bc_level) , intent(in   ) :: the_bc_level(:)
+    real(kind=dp_t), intent(in   ) :: u0_1d(:,0:)
+    type(multifab), intent(in) :: alpha(:)
+    type(multifab), intent(in) :: beta(:)
+    type(multifab), intent(in) :: gam(:)
 
-    type(multifab) :: rhoh0_old_cart(mla%nlevel)
+    type(multifab) :: Dh0_old_cart(mla%nlevel)
     type(multifab) :: p0_new_cart(mla%nlevel)
 
-    type(multifab) :: rho0mac_old(mla%nlevel,mla%dim)
-    type(multifab) :: rho0mac_new(mla%nlevel,mla%dim)
-    type(multifab) :: rhoh0mac_old(mla%nlevel,mla%dim)
-    type(multifab) :: rhoh0mac_new(mla%nlevel,mla%dim)
+    type(multifab) :: D0mac_old(mla%nlevel,mla%dim)
+    type(multifab) :: D0mac_new(mla%nlevel,mla%dim)
+    type(multifab) :: Dh0mac_old(mla%nlevel,mla%dim)
+    type(multifab) :: Dh0mac_new(mla%nlevel,mla%dim)
     type(multifab) :: h0mac_old(mla%nlevel,mla%dim)
     type(multifab) :: h0mac_new(mla%nlevel,mla%dim)
+    type(multifab) :: s_prim_edge(mla%nlevel,mla%dim)
+    type(multifab) :: s_prim(mla%nlevel)
+    type(multifab) :: u_prim(mla%nlevel)
 
-    integer    :: pred_comp,n,r,i,comp,dm,nlevs
+    integer    :: pred_comp,n,r,i,comp,dm,nlevs,ng_s
     logical    :: is_vel
     real(dp_t) :: smin,smax
     logical    :: is_prediction
@@ -82,14 +90,23 @@ contains
     real(kind=dp_t), allocatable :: h0_new(:,:)
 
     ! Create edge-centered base state quantities.
-    ! Note: rho0_edge_{old,new} and rhoh0_edge_{old,new}
+    ! Note: D0_edge_{old,new} and Dh0_edge_{old,new}
     ! contain edge-centered quantities created via spatial interpolation.
+    real(kind=dp_t), allocatable ::  rho0_old(:,:)
+    real(kind=dp_t), allocatable ::  rho0_new(:,:)
+    real(kind=dp_t), allocatable :: rhoh0_old(:,:)
+    real(kind=dp_t), allocatable :: rhoh0_new(:,:)
+    real(kind=dp_t), allocatable ::  D0_edge_old(:,:)
+    real(kind=dp_t), allocatable ::  D0_edge_new(:,:)
+    real(kind=dp_t), allocatable :: Dh0_edge_old(:,:)
+    real(kind=dp_t), allocatable :: Dh0_edge_new(:,:)
+    real(kind=dp_t), allocatable ::    t0_edge_old(:,:)
+    real(kind=dp_t), allocatable ::    t0_edge_new(:,:)
     real(kind=dp_t), allocatable ::  rho0_edge_old(:,:)
     real(kind=dp_t), allocatable ::  rho0_edge_new(:,:)
     real(kind=dp_t), allocatable :: rhoh0_edge_old(:,:)
     real(kind=dp_t), allocatable :: rhoh0_edge_new(:,:)
-    real(kind=dp_t), allocatable ::    t0_edge_old(:,:)
-    real(kind=dp_t), allocatable ::    t0_edge_new(:,:)
+
 
     type(bl_prof_timer), save :: bpt
 
@@ -97,6 +114,14 @@ contains
 
     allocate( h0_old(nlevs_radial,0:nr_fine-1))
     allocate( h0_new(nlevs_radial,0:nr_fine-1))
+    allocate( rho0_old(nlevs_radial,0:nr_fine-1))
+    allocate( rho0_new(nlevs_radial,0:nr_fine-1))
+    allocate( rhoh0_old(nlevs_radial,0:nr_fine-1))
+    allocate( rhoh0_new(nlevs_radial,0:nr_fine-1))
+    allocate(  D0_edge_old(nlevs_radial,0:nr_fine))
+    allocate(  D0_edge_new(nlevs_radial,0:nr_fine))
+    allocate( Dh0_edge_old(nlevs_radial,0:nr_fine))
+    allocate( Dh0_edge_new(nlevs_radial,0:nr_fine))
     allocate(  rho0_edge_old(nlevs_radial,0:nr_fine))
     allocate(  rho0_edge_new(nlevs_radial,0:nr_fine))
     allocate( rhoh0_edge_old(nlevs_radial,0:nr_fine))
@@ -109,10 +134,10 @@ contains
     nlevs = mla%nlevel
 
     if (spherical .eq. 0) then
-       call cell_to_edge(rho0_old,rho0_edge_old)
-       call cell_to_edge(rho0_new,rho0_edge_new)
-       call cell_to_edge(rhoh0_old,rhoh0_edge_old)
-       call cell_to_edge(rhoh0_new,rhoh0_edge_new)
+       call cell_to_edge(D0_old,D0_edge_old)
+       call cell_to_edge(D0_new,D0_edge_new)
+       call cell_to_edge(Dh0_old,Dh0_edge_old)
+       call cell_to_edge(Dh0_new,Dh0_edge_new)
        call cell_to_edge(tempbar,t0_edge_old)
        call cell_to_edge(tempbar,t0_edge_new)
     end if
@@ -133,25 +158,26 @@ contains
 
     ! compute forcing terms
     if (enthalpy_pred_type .eq. predict_rhohprime) then
-       
+
        ! make force for (rho h)'
        is_prediction = .true.
        call mkrhohforce(mla,scal_force,is_prediction, &
-                        thermal,umac,p0_old,p0_old,rho0_old,rho0_old,&
-                        psi,dx,.true.,the_bc_level)
+                        thermal,umac,p0_old,p0_old,D0_old,D0_old,&
+                        Dh0_old,Dh0_new, &
+                        psi,dx,.true.,the_bc_level,u0_1d)
 
        do n=1,nlevs
-          call build(rhoh0_old_cart(n), get_layout(sold(n)), 1, 1)
+          call build(Dh0_old_cart(n), get_layout(sold(n)), 1, 1)
        end do
 
-       call put_1d_array_on_cart(rhoh0_old,rhoh0_old_cart,dm+rhoh_comp,.false., &
+       call put_1d_array_on_cart(Dh0_old,Dh0_old_cart,dm+rhoh_comp,.false., &
                                  .false.,dx,the_bc_level,mla)
 
-       call modify_scal_force(scal_force,sold,umac,rhoh0_old, &
-                              rhoh0_edge_old,w0,dx,rhoh0_old_cart,rhoh_comp,mla,the_bc_level)
+       call modify_scal_force(scal_force,sold,umac,Dh0_old, &
+                              Dh0_edge_old,w0,dx,Dh0_old_cart,rhoh_comp,mla,the_bc_level)
 
        do n=1,nlevs
-          call destroy(rhoh0_old_cart(n))
+          call destroy(Dh0_old_cart(n))
        end do
 
     else if (enthalpy_pred_type .eq. predict_h .or. &
@@ -159,8 +185,9 @@ contains
 
        is_prediction = .true.
        call mkrhohforce(mla,scal_force,is_prediction,&
-                        thermal,umac,p0_old,p0_old,rho0_old,rho0_old,&
-                        psi,dx,.true.,the_bc_level)
+                        thermal,umac,p0_old,p0_old,D0_old,D0_old,&
+                        Dh0_old,Dh0_new, &
+                        psi,dx,.true.,the_bc_level,u0_1d)
 
        if (enthalpy_pred_type .eq. predict_h) then
           ! make force for h by calling mkrhohforce then dividing by rho
@@ -175,7 +202,7 @@ contains
        do n=1,nlevs_radial
           do i=1,numdisjointchunks(n)
              do r=r_start_coord(n,i),r_end_coord(n,i)
-                h0_old(n,r) = rhoh0_old(n,r) / rho0_old(n,r)
+                h0_old(n,r) = Dh0_old(n,r) / D0_old(n,r)
              end do
           end do
        end do
@@ -192,8 +219,8 @@ contains
        ! make force for temperature
        call mktempforce(mla,scal_force,umac,sold,thermal,p0_old,p0_old,psi,dx,the_bc_level)
 
-    end if        
-      
+    end if
+
     !**************************************************************************
     !     Add w0 to MAC velocities (trans velocities already have w0).
     !**************************************************************************
@@ -201,12 +228,12 @@ contains
     call addw0(umac,the_bc_level,mla,w0,w0mac,mult=ONE)
 
     !**************************************************************************
-    !     Create the edge states of (rho h)' or h or T    
+    !     Create the edge states of (rho h)' or h or T
     !**************************************************************************
 
     if (enthalpy_pred_type .eq. predict_rhohprime) then
        ! convert (rho h) -> (rho h)' or
-       call put_in_pert_form(mla,sold,rhoh0_old,dx,rhoh_comp,foextrap_comp,.true., &
+       call put_in_pert_form(mla,sold,Dh0_old,dx,rhoh_comp,foextrap_comp,.true., &
                              the_bc_level)
     end if
 
@@ -255,7 +282,7 @@ contains
 
     if (enthalpy_pred_type .eq. predict_rhohprime) then
        ! convert (rho h)' -> (rho h)
-       call put_in_pert_form(mla,sold,rhoh0_old,dx,rhoh_comp,dm+rhoh_comp,.false., &
+       call put_in_pert_form(mla,sold,Dh0_old,dx,rhoh_comp,dm+rhoh_comp,.false., &
                              the_bc_level)
     end if
 
@@ -276,12 +303,61 @@ contains
        call convert_rhoh_to_h(sold,.false.,mla,the_bc_level)
     end if
 
+    ! FIXME: need primitive variables here
+    ! It's going to be really hard to do this properly, so going to just do it
+    ! in a really hacky way for now.
+    rho0_old(:,:) = D0_old(:,:) / u0_1d(:,:)
+    rho0_new(:,:) = D0_new(:,:) / u0_1d(:,:)
+    rhoh0_old(:,:) = Dh0_old(:,:) / u0_1d(:,:)
+    rhoh0_new(:,:) = Dh0_new(:,:) / u0_1d(:,:)
+
+    if (spherical .eq. 0) then
+       call cell_to_edge(rho0_old,rho0_edge_old)
+       call cell_to_edge(rho0_new,rho0_edge_new)
+       call cell_to_edge(rhoh0_old,rhoh0_edge_old)
+       call cell_to_edge(rhoh0_new,rhoh0_edge_new)
+    end if
+
+    do n=1,nlevs
+       ng_s = nghost(sold(n))
+       do comp=1,dm
+           call multifab_build_edge(s_prim_edge(n,comp),mla%la(n),nscal, ng_s,comp)
+       enddo
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+    end do
+    call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
+
+    if (enthalpy_pred_type .eq. predict_rhoh) then
+       ! use the conservative form of the prediction
+       if (bds_type .eq. 0) then
+          call make_edge_scal(s_prim,s_prim_edge,umac,scal_force, &
+                              dx,dt,is_vel,the_bc_level, &
+                              pred_comp,dm+pred_comp,1,.true.,mla)
+       else if (bds_type .eq. 1) then
+          call bds(s_prim,s_prim_edge,umac,scal_force, &
+                   dx,dt,is_vel,the_bc_level, &
+                   pred_comp,dm+pred_comp,1,.true.,mla)
+       end if
+    else
+       ! use the advective form of the prediction
+       if (bds_type .eq. 0) then
+          call make_edge_scal(s_prim,s_prim_edge,umac,scal_force, &
+                              dx,dt,is_vel,the_bc_level, &
+                              pred_comp,dm+pred_comp,1,.false.,mla)
+       else if (bds_type .eq. 1) then
+          call bds(s_prim,s_prim_edge,umac,scal_force, &
+                   dx,dt,is_vel,the_bc_level, &
+                   pred_comp,dm+pred_comp,1,.false.,mla)
+       end if
+    end if
+
     ! Compute enthalpy edge states if we were predicting temperature.  This
     ! needs to be done after the state was returned to the full state.
     if ( (enthalpy_pred_type .eq. predict_T_then_rhohprime) .or. &
          (enthalpy_pred_type .eq. predict_T_then_h        ) .or. &
          (enthalpy_pred_type .eq. predict_Tprime_then_h) ) then
-       call makeHfromRhoT_edge(uold,sedge,rho0_old,rhoh0_old,tempbar,rho0_edge_old, &
+       call makeHfromRhoT_edge(u_prim,s_prim_edge,rho0_old,rhoh0_old,tempbar,rho0_edge_old, &
                                rhoh0_edge_old,t0_edge_old,rho0_new,rhoh0_new,tempbar, &
                                rho0_edge_new,rhoh0_edge_new,t0_edge_new,the_bc_level,dx,mla)
     end if
@@ -303,8 +379,8 @@ contains
        if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call multifab_build_edge(rho0mac_old(n,comp),mla%la(n),1,1,comp)
-                call multifab_build_edge(rhoh0mac_old(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge(D0mac_old(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge(Dh0mac_old(n,comp),mla%la(n),1,1,comp)
                 call multifab_build_edge(h0mac_old(n,comp),mla%la(n),1,1,comp)
              end do
           end do
@@ -312,31 +388,34 @@ contains
           do n=1,nlevs_radial
              do i=1,numdisjointchunks(n)
                 do r=r_start_coord(n,i),r_end_coord(n,i)
-                   h0_old(n,r) = rhoh0_old(n,r) / rho0_old(n,r)
+                   h0_old(n,r) = Dh0_old(n,r) / D0_old(n,r)
                 end do
              end do
           end do
 
-          call make_s0mac(mla,rho0_old,rho0mac_old,dx,dm+rho_comp,the_bc_level)
-          call make_s0mac(mla,rhoh0_old,rhoh0mac_old,dx,dm+rhoh_comp,the_bc_level)
+          call make_s0mac(mla,D0_old,D0mac_old,dx,dm+rho_comp,the_bc_level)
+          call make_s0mac(mla,Dh0_old,Dh0mac_old,dx,dm+rhoh_comp,the_bc_level)
           call make_s0mac(mla,h0_old,h0mac_old,dx,foextrap_comp,the_bc_level)
        end if
 
        ! compute enthalpy fluxes
        call mk_rhoh_flux(mla,sflux,sold,sedge,umac,w0,w0mac, &
-                         rho0_old,rho0_edge_old,rho0mac_old, &
-                         rho0_old,rho0_edge_old,rho0mac_old, &
-                         rhoh0_old,rhoh0_edge_old,rhoh0mac_old, &
-                         rhoh0_old,rhoh0_edge_old,rhoh0mac_old, &
+                         D0_old,D0_edge_old,D0mac_old, &
+                         D0_old,D0_edge_old,D0mac_old, &
+                         Dh0_old,Dh0_edge_old,Dh0mac_old, &
+                         Dh0_old,Dh0_edge_old,Dh0mac_old, &
                          h0mac_old,h0mac_old)
 
       if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call destroy(rho0mac_old(n,comp))
-                call destroy(rhoh0mac_old(n,comp))
+                call destroy(D0mac_old(n,comp))
+                call destroy(Dh0mac_old(n,comp))
                 call destroy(h0mac_old(n,comp))
-             end do
+                call destroy(s_prim_edge(n,comp))
+            enddo
+            call destroy(s_prim(n))
+            call destroy(u_prim(n))
           end do
        end if
 
@@ -345,11 +424,11 @@ contains
        if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call multifab_build_edge( rho0mac_old(n,comp),mla%la(n),1,1,comp)
-                call multifab_build_edge(rhoh0mac_old(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge( D0mac_old(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge(Dh0mac_old(n,comp),mla%la(n),1,1,comp)
                 call multifab_build_edge(   h0mac_old(n,comp),mla%la(n),1,1,comp)
-                call multifab_build_edge( rho0mac_new(n,comp),mla%la(n),1,1,comp)
-                call multifab_build_edge(rhoh0mac_new(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge( D0mac_new(n,comp),mla%la(n),1,1,comp)
+                call multifab_build_edge(Dh0mac_new(n,comp),mla%la(n),1,1,comp)
                 call multifab_build_edge(   h0mac_new(n,comp),mla%la(n),1,1,comp)
              end do
           end do
@@ -357,38 +436,41 @@ contains
           do n=1,nlevs_radial
              do i=1,numdisjointchunks(n)
                 do r=r_start_coord(n,i),r_end_coord(n,i)
-                   h0_old(n,r) = rhoh0_old(n,r) / rho0_old(n,r)
-                   h0_new(n,r) = rhoh0_new(n,r) / rho0_new(n,r)
+                   h0_old(n,r) = Dh0_old(n,r) / D0_old(n,r)
+                   h0_new(n,r) = Dh0_new(n,r) / D0_new(n,r)
                 end do
              end do
           end do
 
-          call make_s0mac(mla,rho0_old,rho0mac_old,dx,dm+rho_comp,the_bc_level)
-          call make_s0mac(mla,rhoh0_old,rhoh0mac_old,dx,dm+rhoh_comp,the_bc_level)
+          call make_s0mac(mla,D0_old,D0mac_old,dx,dm+rho_comp,the_bc_level)
+          call make_s0mac(mla,Dh0_old,Dh0mac_old,dx,dm+rhoh_comp,the_bc_level)
           call make_s0mac(mla,h0_old,h0mac_old,dx,foextrap_comp,the_bc_level)
-          call make_s0mac(mla,rho0_new,rho0mac_new,dx,dm+rho_comp,the_bc_level)
-          call make_s0mac(mla,rhoh0_new,rhoh0mac_new,dx,dm+rhoh_comp,the_bc_level)
+          call make_s0mac(mla,D0_new,D0mac_new,dx,dm+rho_comp,the_bc_level)
+          call make_s0mac(mla,Dh0_new,Dh0mac_new,dx,dm+rhoh_comp,the_bc_level)
           call make_s0mac(mla,h0_new,h0mac_new,dx,foextrap_comp,the_bc_level)
        end if
 
        ! compute enthalpy fluxes
        call mk_rhoh_flux(mla,sflux,sold,sedge,umac,w0,w0mac, &
-                         rho0_old,rho0_edge_old,rho0mac_old, &
-                         rho0_new,rho0_edge_new,rho0mac_new, &
-                         rhoh0_old,rhoh0_edge_old,rhoh0mac_old, &
-                         rhoh0_new,rhoh0_edge_new,rhoh0mac_new, &
+                         D0_old,D0_edge_old,D0mac_old, &
+                         D0_new,D0_edge_new,D0mac_new, &
+                         Dh0_old,Dh0_edge_old,Dh0mac_old, &
+                         Dh0_new,Dh0_edge_new,Dh0mac_new, &
                          h0mac_old,h0mac_new)
 
       if (spherical .eq. 1) then
           do n=1,nlevs
              do comp=1,dm
-                call destroy(rho0mac_old(n,comp))
-                call destroy(rhoh0mac_old(n,comp))
+                call destroy(D0mac_old(n,comp))
+                call destroy(Dh0mac_old(n,comp))
                 call destroy(h0mac_old(n,comp))
-                call destroy(rho0mac_new(n,comp))
-                call destroy(rhoh0mac_new(n,comp))
+                call destroy(D0mac_new(n,comp))
+                call destroy(Dh0mac_new(n,comp))
                 call destroy(h0mac_new(n,comp))
-             end do
+                call destroy(s_prim_edge(n,comp))
+            enddo
+            call destroy(s_prim(n))
+            call destroy(u_prim(n))
           end do
        end if
 
@@ -401,22 +483,24 @@ contains
     !**************************************************************************
     !     1) Create (rho h)' force at time n+1/2.
     !          (NOTE: we don't worry about filling ghost cells of the scal_force
-    !                 because we only need them in valid regions...)     
+    !                 because we only need them in valid regions...)
     !     2) Update (rho h) with conservative differencing.
     !**************************************************************************
-       
+
     if (which_step .eq. 1) then
       ! Here just send p0_old and p0_old
        is_prediction = .false.
        call mkrhohforce(mla,scal_force,is_prediction, &
-                        thermal,umac,p0_old,p0_old,rho0_old,rho0_old,&
-                        psi,dx,.false.,the_bc_level)
+                        thermal,umac,p0_old,p0_old,D0_old,D0_old,&
+                        Dh0_old,Dh0_new, &
+                        psi,dx,.false.,the_bc_level,u0_1d)
     else
       ! Here send p0_old and p0_new
        is_prediction = .false.
        call mkrhohforce(mla,scal_force,is_prediction, &
-                        thermal,umac,p0_old,p0_new,rho0_old,rho0_new,&
-                        psi,dx,.false.,the_bc_level)
+                        thermal,umac,p0_old,p0_new,D0_old,D0_new,&
+                        Dh0_old,Dh0_new, &
+                        psi,dx,.false.,the_bc_level,u0_1d)
     end if
 
     if (spherical .eq. 1) then
@@ -439,7 +523,7 @@ contains
 
     if ( verbose .ge. 1 ) then
        do n=1,nlevs
-          smin = multifab_min_c(snew(n),rhoh_comp) 
+          smin = multifab_min_c(snew(n),rhoh_comp)
           smax = multifab_max_c(snew(n),rhoh_comp)
           if (parallel_IOProcessor()) then
              write (6,1999) n

@@ -592,12 +592,12 @@ contains
     end if
 
     !do n = 1, nlevs
-    !    do i = 1, nfabs(s2(n))
-    !        sp => dataptr(s2(n), i)
+    !    do i = 1, nfabs(alpha(n))
+    !        sp => dataptr(alpha(n), i)
     !    enddo
     !enddo
 
-    !print *, 'sp', sp(:,:,:,rhoh_comp)
+    !print *, 'sp', sp(:,:,:,:)
 
     ! FIXME; I think this should go after the enthalpy update in 4H
     ! 4D
@@ -679,10 +679,14 @@ contains
     end if
 
     ! 4H
+    !print *, 'p0_old', p0_old
+    !print *, 'Dh0_old', Dh0_old
+    !print *, 'Dh0_new', Dh0_new
+    !print *, 'p0_new', p0_new
 
     call enthalpy_advance(mla,1,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
-                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array)
+                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam)
 
     do n = 1, nlevs
        do comp = 1,dm
@@ -732,6 +736,14 @@ contains
        call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
     end do
     call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+    do n = 1, nlevs
+        do i = 1, nfabs(s2(n))
+            sp => dataptr(s2(n), i)
+        enddo
+    enddo
+
+    print *, 'sp', sp(:,:,:,rho_comp)
 
     ! now update temperature
     if (use_tfromp) then
@@ -1192,7 +1204,7 @@ contains
 
     call enthalpy_advance(mla,2,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
-                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array)
+                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam)
 
     do n=1,nlevs
        do comp = 1,dm

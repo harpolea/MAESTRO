@@ -250,7 +250,7 @@ contains
 
     real(kind=dp_t), intent(  out) :: dpdr_cell(:,0:)
     real(kind=dp_t), intent(inout) ::   p0(:,0:)
-    real(kind=dp_t),  intent(inout) ::   u0_1d(:,0:)
+    real(kind=dp_t),  intent(in) ::   u0_1d(:,0:)
 
     ! Local variables
     integer                      :: r, n, i,j
