@@ -639,17 +639,17 @@ contains
             u0p => dataptr(u0(n) , i)
             select case (dm)
             case (1)
-               call mk_mac_coeffs_1d(bxp(:,1,1,1),ng_b, rp(:,1,1,1), &
+               call mk_mac_coeffs_1d(bxp(:,1,1,1),ng_b, rp(:,1,1,rhoh_comp), &
                                      u0p(:,1,1,1), ng_r,lo,hi)
             case (2)
                byp => dataptr(beta(n,2), i)
-               call mk_mac_coeffs_2d(bxp(:,:,1,1),byp(:,:,1,1),ng_b, rp(:,:,1,1), &
+               call mk_mac_coeffs_2d(bxp(:,:,1,1),byp(:,:,1,1),ng_b, rp(:,:,1,rhoh_comp), &
                                      u0p(:,:,1,1), ng_r,lo,hi)
             case (3)
                byp => dataptr(beta(n,2), i)
                bzp => dataptr(beta(n,3), i)
                call mk_mac_coeffs_3d(bxp(:,:,:,1),byp(:,:,:,1),bzp(:,:,:,1),&
-                                     ng_b,rp(:,:,:,1),u0p(:,:,:,1),ng_r,ng_u0,lo,hi)
+                                     ng_b,rp(:,:,:,rhoh_comp),u0p(:,:,:,1),ng_r,ng_u0,lo,hi)
             end select
          end do
       end do

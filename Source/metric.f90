@@ -191,6 +191,88 @@ contains
 
     end subroutine calcW
 
+    subroutine calcW_mac(alpha, beta, gam, u, mla, W_lor,the_bc_level)
+        ! Calculates the Lorentz factor
+        use probin_module, only : c
+
+        type(multifab)    , intent(in)    :: alpha(:)
+        type(multifab)    , intent(in)    :: beta(:)
+        type(multifab)    , intent(in)    :: gam(:)
+        type(multifab)    , intent(in)    :: u(:,:)
+        type(ml_layout)   , intent(in) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
+
+        type(multifab)    , intent(inout)    :: W_lor(:)
+
+        real(kind=dp_t), pointer:: alphap(:,:,:,:)
+        real(kind=dp_t), pointer:: betap(:,:,:,:)
+        real(kind=dp_t), pointer:: gamp(:,:,:,:)
+        real(kind=dp_t), pointer:: up(:,:,:,:)
+        real(kind=dp_t), pointer:: vp(:,:,:,:)
+        real(kind=dp_t), pointer:: wp(:,:,:,:)
+        real(kind=dp_t), pointer:: W_lorp(:,:,:,:)
+        integer     :: dm, nlevs, n, i, j, k, lo(mla%dim), hi(mla%dim)
+        real(kind=dp_t)     :: eye(1:3,1:3)
+        real(kind=dp_t), allocatable   :: v(:,:,:,:)
+
+        ! make identity matrix
+        eye(:,:) = 0.d0
+        do i = 1,3
+            eye(i,i) = 1.d0
+        enddo
+
+        nlevs = mla%nlevel
+        dm = mla%dim
+
+        do n = 1, nlevs
+            do k = 1, nfabs(alpha(n))
+                alphap => dataptr(alpha(n),k)
+                betap => dataptr(beta(n),k)
+                gamp => dataptr(gam(n),k)
+                up => dataptr(u(n,1),k)
+                vp => dataptr(u(n,2),k)
+                wp => dataptr(u(n,3),k)
+                W_lorp => dataptr(W_lor(n),k)
+                lo = lwb(get_box(alpha(n), k))
+                hi = upb(get_box(alpha(n), k))
+
+                allocate(v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1:3))
+
+                W_lorp(:,:,:,1) = ZERO
+
+                v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) = up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)
+
+                v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),2) = vp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)
+
+                v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),3) = wp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)
+
+                do i = 1, 3
+                    do j = 1, 3
+                        W_lorp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) = W_lorp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) + &
+                        eye(i,j) * &
+                        gamp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) * &
+                        (v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i)) * &
+                        (v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j)) / &
+                        alphap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)**2
+                    enddo
+                enddo
+                W_lorp(:,:,:,1) = ONE / sqrt(1.d0 - W_lorp(:,:,:,1)/c**2)
+
+                deallocate(v)
+            enddo
+        enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,W_lor,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=W_lor(1)%ng)
+
+    end subroutine calcW_mac
+
     subroutine calcu0(alpha, beta, gam, W_lor, u0, mla,the_bc_level)
         ! Calculates timelike coordinate of 3+1 velocity
         ! using Lorentz factor and alpha:

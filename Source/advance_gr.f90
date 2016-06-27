@@ -35,7 +35,7 @@ contains
                               dpdr_cell_old,dx,dt,dtold,the_bc_tower, &
                               dSdt,Source_old,Source_new,etarho_ec,etarho_cc, &
                               psi,sponge,hgrhs,tempbar_init,particles,&
-                              u0,chrls,gam,alpha,beta)
+                              u0,chrls,gam,alpha,beta,W_lor)
 
     use bl_prof_module              , only : bl_prof_timer, build, destroy
     use      pre_advance_module     , only : advance_premac
@@ -126,6 +126,7 @@ contains
     type(multifab),  intent(inout) :: gam(:)
     type(multifab),  intent(inout) :: alpha(:)
     type(multifab),  intent(inout) :: beta(:)
+    type(multifab),  intent(inout) :: W_lor(:)
 
     ! local
     type(multifab) ::             Dh_half(mla%nlevel)
@@ -163,6 +164,7 @@ contains
 
     type(multifab) ::               w0mac(mla%nlevel,mla%dim)
     type(multifab) ::                umac(mla%nlevel,mla%dim)
+    type(multifab) ::                u0mac(mla%nlevel)
     type(multifab) ::               sedge(mla%nlevel,mla%dim)
     type(multifab) ::               sflux(mla%nlevel,mla%dim)
 
@@ -273,9 +275,16 @@ contains
     if (barrier_timers) call parallel_barrier()
     misc_time = misc_time + parallel_wtime() - misc_time_start
 
+    call calcW(alpha, beta, gam, uold, mla, W_lor,the_bc_tower%bc_tower_array)
+    call calcu0(alpha, beta, gam, W_lor, u0, mla,the_bc_tower%bc_tower_array)
+    ! set u0_1d to be average
+    call average(mla,u0,u0_1d,dx,1)
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 1 -- react the full state and then base state through dt/2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    print *, 'D0_old: ', D0_old
 
     react_time_start = parallel_wtime()
 
@@ -428,10 +437,17 @@ contains
        do comp=1,dm
           call multifab_build_edge(umac(n,comp), mla%la(n),1,1,comp)
        end do
+       !call multifab_build_edge(u0mac(n), mla%la(n),1,1,comp)
     end do
 
     call advance_premac(uold,sold,umac,gpi,normal,w0,w0mac,w0_force,w0_force_cart, &
                         D0_old,Dh0_old,dpdr_cell_old,dx,dt,the_bc_tower%bc_tower_array,mla,u0,chrls,gam)
+
+    !call calcW_mac(alpha, beta, gam, umac, mla, W_lor, the_bc_tower%bc_tower_array)
+    !call calcu0(alpha, beta, gam, W_lor, u0mac, mla,the_bc_tower%bc_tower_array)
+    ! set u0_1d to be average
+    !call average(mla,u0mac,u0_1d,dx,1)
+
 
     if (dm .eq. 3) then
        do n=1,nlevs
@@ -573,6 +589,8 @@ contains
        call setval(etarhoflux(n),ZERO,all=.true.)
     end do
 
+    !! FIXME: check p0_new is not being used before being initialised here
+
     call density_advance(mla,1,s1,s2,sedge,sflux,scal_force,umac,w0,w0mac,etarhoflux, &
                          D0_old,D0_new,p0_new,D0_predicted_edge, &
                          dx,dt,the_bc_tower%bc_tower_array)
@@ -607,6 +625,8 @@ contains
        call average(mla,s2,Dh0_new,dx,rhoh_comp)
        call compute_cutoff_coords(Dh0_new)
     end if
+
+    !! FIXME: I think p0_new is being used before initialisation here
 
     if (evolve_base_state) then
        call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
@@ -809,6 +829,14 @@ contains
 
     div_coeff_nph = HALF*(div_coeff_old + div_coeff_new)
 
+    print *, 'Dh0_new: ', Dh0_new
+
+    print *, 'dpdr_cell_new: ', dpdr_cell_new
+
+    print *, 'div_coeff_old: ', div_coeff_old
+
+    print *, 'div_coeff_new: ', div_coeff_new
+
     if (barrier_timers) call parallel_barrier()
     misc_time = misc_time + parallel_wtime() - misc_time_start
 
@@ -992,10 +1020,11 @@ contains
     end do
 
     do n=1,nlevs
-       call multifab_build(Dh_half(n), mla%la(n), 1, 1)
+       call multifab_build(Dh_half(n), mla%la(n), 2, 1)
     end do
 
-    call make_at_halftime(Dh_half,sold,snew,rhoh_comp,1,the_bc_tower%bc_tower_array,mla)
+    call make_at_halftime(Dh_half,sold,snew,rhoh_comp,rhoh_comp,the_bc_tower%bc_tower_array,mla)
+    call make_at_halftime(Dh_half,sold,snew,rho_comp,rho_comp,the_bc_tower%bc_tower_array,mla)
 
     do n = 1, nlevs
         do i = 1, nfabs(Dh_half(n))
@@ -1015,6 +1044,9 @@ contains
        call make_s0mac(mla,div_coeff_nph,div_coeff_cart_edge,dx,foextrap_comp, &
                        the_bc_tower%bc_tower_array)
 
+
+
+        !!! FIXME: check Dh_half here!!
        call macproject(mla,umac,macphi,Dh_half,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_cart_edge=div_coeff_cart_edge)
 
@@ -1025,6 +1057,19 @@ contains
        end do
     else
        call cell_to_edge(div_coeff_nph,div_coeff_edge)
+
+       !do n = 1, nlevs
+        !   do j = 1, comp
+        !       do i = 1, nfabs(div_coeff_nph(n,j))
+        !           sp => dataptr(div_coeff_nph(n,j), i)
+        !       enddo
+         !  enddo
+       !enddo
+
+
+      !print *, 'div_coeff_nph: ', div_coeff_nph
+
+       ! FIXME: div_coeff_nph, div_coeff_edge have not had bcs applied  to first few entries.
        call macproject(mla,umac,macphi,Dh_half,u0,dx,the_bc_tower,macrhs, &
                        div_coeff_1d=div_coeff_nph,div_coeff_1d_edge=div_coeff_edge)
     end if

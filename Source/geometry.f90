@@ -1,7 +1,7 @@
 ! a module for storing the geometric information so we don't have to pass it
 !
 ! This module provides the coordinate value for the left edge of a base-state
-! zone (r_edge_loc) and the zone center (r_cc_loc).  As always, it is assumed that 
+! zone (r_edge_loc) and the zone center (r_cc_loc).  As always, it is assumed that
 ! the base state arrays begin with index 0, not 1.
 
 module geometry
@@ -59,13 +59,13 @@ contains
     real(dp_t)       , pointer     :: dx(:,:)
     type(ml_boxarray), intent(in ) :: mba
     integer          , intent(in ) :: num_levs
-    
+
     integer :: n,d,dm
 
     dm = mba%dim
 
     allocate(dx(num_levs,dm))
-    
+
     do d=1,dm
        dx(1,d) = (prob_hi(d)-prob_lo(d)) / real(extent(mba%pd(1),d),kind=dp_t)
     end do
@@ -112,20 +112,20 @@ contains
     integer :: n,i
 
     if (spherical .eq. 0) then
-       
+
        allocate(dr(num_levs))
        allocate(nr(num_levs))
 
        allocate(  r_cc_loc(num_levs,0:nr_fine-1))
        allocate(r_edge_loc(num_levs,0:nr_fine))
-       
+
        nr(num_levs) = nr_fine
        dr(num_levs) = dr_fine
        do n=num_levs-1,1,-1
           nr(n) = nr(n+1)/mba%rr(n,mba%dim)
           dr(n) = dr(n+1)*dble(mba%rr(n,mba%dim))
        enddo
-       
+
        do n=1,num_levs
           do i = 0,nr(n)-1
              r_cc_loc(n,i) = prob_lo(mba%dim) + (dble(i)+HALF)*dr(n)
@@ -142,14 +142,14 @@ contains
 
        allocate(  r_cc_loc(1,0:nr_fine-1))
        allocate(r_edge_loc(1,0:nr_fine))
-       
+
        nr(1) = nr_fine
        dr(1) = dr_fine
 
        do i=0,nr_fine-1
           r_cc_loc(1,i) = (dble(i)+HALF)*dr(1)
        end do
-       
+
        do i=0,nr_fine
           r_edge_loc(1,i) = (dble(i))*dr(1)
        end do
@@ -262,7 +262,7 @@ contains
     ! it to above the top of the domain on the finest level
     if (.not. found) then
        which_lev = nlevs_radial
-       base_cutoff_density_coord(nlevs_radial) = nr(nlevs_radial)
+       base_cutoff_density_coord(nlevs_radial) = nr(nlevs_radial)-1
     endif
 
     ! set the base cutoff coordinate on the finer levels
@@ -302,7 +302,7 @@ contains
 
        end do
     end do
- 
+
     ! if the burning cutoff density was not found anywhere, then set
     ! it to above the top of the domain on the finest level
     if (.not. found) then
@@ -310,7 +310,7 @@ contains
        burning_cutoff_density_coord(nlevs_radial) = nr(nlevs_radial)
     endif
 
-    ! set the burning cutoff coordinate on the finer levels 
+    ! set the burning cutoff coordinate on the finer levels
     do n=which_lev+1,nlevs_radial
        burning_cutoff_density_coord(n) = 2*burning_cutoff_density_coord(n-1)+1
     end do
@@ -346,12 +346,12 @@ contains
     type(boxarray) ::  validboxarr(size(mf))
     type(boxarray) :: diffboxarray(size(mf))
     type(box)      ::  boundingbox(size(mf))
-    
+
     dm = get_dim(mf(1))
     nlevs = size(mf)
 
     if (spherical .eq. 0) then
-    
+
        ! create a "bounding box" for each level
        ! this the smallest possible box that fits every grid at a particular level
        ! this even includes the empty spaces if there are gaps between grids
@@ -361,11 +361,11 @@ contains
              boundingbox(n) = box_bbox(boundingbox(n),get_box(mf(n)%la,i))
           end do
        end do
-       
+
        ! compute diffboxarray
        ! each box in diffboxarray corresponds to an "empty space" between valid regions
        ! at each level, excluding the coarsest level.
-       ! I am going to use this to compute all of the intermediate r_start_coord and 
+       ! I am going to use this to compute all of the intermediate r_start_coord and
        ! r_end_coord
        do n=1,nlevs
           call boxarray_build_copy(validboxarr(n),get_boxarray(mf(n)))
@@ -373,21 +373,21 @@ contains
           call layout_boxarray_diff(diffboxarray(n),boundingbox(n),la)
           call boxarray_simplify(diffboxarray(n))
        end do
-       
+
        if (allocated(numdisjointchunks)) then
           deallocate(numdisjointchunks)
        end if
        allocate(numdisjointchunks(nlevs))
-       
+
        do n=1,nlevs
           numdisjointchunks(n) = nboxes(diffboxarray(n)) + 1
        end do
-       
+
        maxdisjointchunks = 1
        do n=2,nlevs
           maxdisjointchunks = max(maxdisjointchunks,numdisjointchunks(n))
        end do
-       
+
        if (allocated(r_start_coord)) then
           deallocate(r_start_coord)
        end if
@@ -396,7 +396,7 @@ contains
           deallocate(r_end_coord)
        end if
        allocate(r_end_coord(nlevs,maxdisjointchunks))
-       
+
        do n=1,nlevs
 
           lo = lwb(boundingbox(n))
@@ -458,7 +458,7 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ! rotation
-! 
+!
 ! co_latitude, rotation_radius, theta_in_rad, sin_theta and cos_theta
 ! are only important when wanting to rotate a plane-parallel patch
 ! which lives at an angle co_latitude from the rotation axis and at a
@@ -483,7 +483,7 @@ contains
     real(dp_t) :: theta_in_rad
 
     theta_in_rad = M_PI * co_latitude / 180_dp_t
-    
+
     sin_theta = sin(theta_in_rad)
     cos_theta = cos(theta_in_rad)
 

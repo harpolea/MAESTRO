@@ -15,7 +15,7 @@ contains
 
   subroutine velocity_advance(mla,uold,unew,sold,Dh_half,umac,gpi, &
                               normal,w0,w0mac,w0_force,w0_force_cart_vec, &
-                              rho0_old,Dh0_old,rho0_nph,Dh0_nph,dpdr_cell_old,dpdr_cell_nph,dx,dt, &
+                              D0_old,Dh0_old,D0_nph,Dh0_nph,dpdr_cell_old,dpdr_cell_nph,dx,dt, &
                               the_bc_level,sponge,u0,chrls,gam)
     use addw0_module
     use bl_prof_module
@@ -39,9 +39,9 @@ contains
     type(multifab) , intent(in   ) :: w0mac(:,:)
     real(kind=dp_t), intent(in   ) :: w0_force(:,0:)
     type(multifab) , intent(in   ) :: w0_force_cart_vec(:)
-    real(kind=dp_t), intent(in   ) :: rho0_old(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_old(:,0:)
     real(kind=dp_t), intent(in   ) :: Dh0_old(:,0:)
-    real(kind=dp_t), intent(in   ) :: rho0_nph(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0_nph(:,0:)
     real(kind=dp_t), intent(in   ) :: Dh0_nph(:,0:)
     real(kind=dp_t), intent(in   ) :: dpdr_cell_old(:,0:)
     real(kind=dp_t), intent(in   ) :: dpdr_cell_nph(:,0:)
@@ -84,7 +84,7 @@ contains
     is_final_update = .false.
     call mk_vel_force(force,is_final_update, &
                       uold,umac,w0,w0mac,gpi,sold,rho_comp,rhoh_comp,normal, &
-                      rho0_old,Dh0_old,dpdr_cell_old,dx, &
+                      D0_old,Dh0_old,dpdr_cell_old,dx, &
                       w0_force,w0_force_cart_vec,the_bc_level,mla,.true., &
                       u0(:),chrls,gam(:))
 
@@ -127,7 +127,7 @@ contains
     is_final_update = .true.
     call mk_vel_force(force,is_final_update, &
                       uold,umac,w0,w0mac,gpi,Dh_half,rho_comp,rhoh_comp,normal, &
-                      rho0_nph,Dh0_nph,dpdr_cell_nph,dx, &
+                      D0_nph,Dh0_nph,dpdr_cell_nph,dx, &
                       w0_force,w0_force_cart_vec,the_bc_level,mla,.true., &
                       u0,chrls,gam)
 

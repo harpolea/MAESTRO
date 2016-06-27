@@ -194,6 +194,10 @@ contains
 
              end do
 
+             !! FIXME: previous loop is where div_coeff goes wrong.
+
+             print *, 'div_coeff 1 ', div_coeff(:,:)
+
              if (n .gt. 1) then
 
                 ! Compare the difference between beta0 at the top of level n to the

@@ -577,7 +577,7 @@ subroutine varden()
                      div_coeff_old,div_coeff_new,dpdr_cell,dx,dt,dtold, &
                      the_bc_tower,dSdt,Source_old,Source_new,etarho_ec, &
                      etarho_cc,psi,sponge,hgrhs,tempbar_init,particles,&
-                     u0,chrls,gam,alpha,beta)
+                     u0,chrls,gam,alpha,beta,W)
 
            runtime2 = parallel_wtime() - runtime1
            call parallel_reduce(runtime1, runtime2, MPI_MAX, proc=parallel_IOProcessorNode())
@@ -1176,7 +1176,7 @@ subroutine varden()
             div_coeff_old,div_coeff_new, &
             dpdr_cell,dx,dt,dtold,the_bc_tower,dSdt,Source_old, &
             Source_new,etarho_ec,etarho_cc,psi,sponge,hgrhs,tempbar_init, &
-            particles,u0,chrls,gam,alpha,beta)
+            particles,u0,chrls,gam,alpha,beta,W)
 
 
         ! limit the timestep if the temperature is changing too rapidly
