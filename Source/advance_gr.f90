@@ -284,8 +284,6 @@ contains
 !! STEP 1 -- react the full state and then base state through dt/2
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    print *, 'D0_old: ', D0_old
-
     react_time_start = parallel_wtime()
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
@@ -648,7 +646,7 @@ contains
 
        ! make psi
        if (spherical .eq. 0) then
-          call make_psi_planar(etarho_cc,psi)
+          call make_psi_planar(etarho_cc,psi,dpdr_cell_new,D0_new,u0_1d)
        else
           ! compute p0_nph
           p0_nph = HALF*(p0_old+p0_new)
@@ -699,10 +697,6 @@ contains
     end if
 
     ! 4H
-    !print *, 'p0_old', p0_old
-    !print *, 'Dh0_old', Dh0_old
-    !print *, 'Dh0_new', Dh0_new
-    !print *, 'p0_new', p0_new
 
     call enthalpy_advance(mla,1,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
@@ -829,13 +823,13 @@ contains
 
     div_coeff_nph = HALF*(div_coeff_old + div_coeff_new)
 
-    print *, 'Dh0_new: ', Dh0_new
+    !print *, 'Dh0_new: ', Dh0_new
 
-    print *, 'dpdr_cell_new: ', dpdr_cell_new
+    !print *, 'dpdr_cell_new: ', dpdr_cell_new
 
-    print *, 'div_coeff_old: ', div_coeff_old
+    !print *, 'div_coeff_old: ', div_coeff_old
 
-    print *, 'div_coeff_new: ', div_coeff_new
+    !print *, 'div_coeff_new: ', div_coeff_new
 
     if (barrier_timers) call parallel_barrier()
     misc_time = misc_time + parallel_wtime() - misc_time_start
@@ -1026,12 +1020,12 @@ contains
     call make_at_halftime(Dh_half,sold,snew,rhoh_comp,rhoh_comp,the_bc_tower%bc_tower_array,mla)
     call make_at_halftime(Dh_half,sold,snew,rho_comp,rho_comp,the_bc_tower%bc_tower_array,mla)
 
-    do n = 1, nlevs
-        do i = 1, nfabs(Dh_half(n))
-            sp => dataptr(Dh_half(n), i)
-        enddo
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(Dh_half(n))
+    !        sp => dataptr(Dh_half(n), i)
+    !    enddo
         !print *, 'sp', sp(:,:,:,:)
-    enddo
+    !enddo
 
     ! MAC projection !
     if (spherical .eq. 1) then
@@ -1065,9 +1059,6 @@ contains
         !       enddo
          !  enddo
        !enddo
-
-
-      !print *, 'div_coeff_nph: ', div_coeff_nph
 
        ! FIXME: div_coeff_nph, div_coeff_edge have not had bcs applied  to first few entries.
        call macproject(mla,umac,macphi,Dh_half,u0,dx,the_bc_tower,macrhs, &
@@ -1212,7 +1203,8 @@ contains
 
        ! make psi
        if (spherical .eq. 0) then
-          call make_psi_planar(etarho_cc,psi)
+           ! TODO: check need nph stuff here?
+          call make_psi_planar(etarho_cc,psi,dpdr_cell_nph,D0_nph,u0_1d)
        else
           p0_nph = HALF*(p0_old+p0_new)
 

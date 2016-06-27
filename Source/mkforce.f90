@@ -497,8 +497,8 @@ contains
              vel_force(i,j,k,2) = -coriolis_term(2) - centrifugal_term(2) - &
                   gpi(i,j,k,2) / (Dh(i,j,k) * u0(i,j,k)) + gr_term(2)
 
-            vel_force(i,j,k,3) = -coriolis_term(3) - centrifugal_term(3) + &
-                 (dpdr(k) - gpi(i,j,k,3) ) / (Dh(i,j,k) * u0(i,j,k)) &
+            vel_force(i,j,k,3) = -coriolis_term(3) - centrifugal_term(3) - &
+                 (dpdr(k) + gpi(i,j,k,3) ) / (Dh(i,j,k) * u0(i,j,k)) &
                  - w0_force(k) + gr_term(3)
 
           end do

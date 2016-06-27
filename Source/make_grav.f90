@@ -236,7 +236,7 @@ contains
     use geometry, only: spherical, nr_fine, r_cc_loc, r_edge_loc, &
          nlevs_radial, nr, numdisjointchunks, &
          r_start_coord, r_end_coord
-    use probin_module, only: grav_const, base_cutoff_density, &
+    use probin_module, only: base_cutoff_density, &
          do_planar_invsq_grav, planar_invsq_mass, do_2d_planar_octant, ref_ratio, g, Rr, c
     use fundamental_constants_module, only: Gconst
     use restrict_base_module
@@ -410,7 +410,7 @@ contains
        else
 
           ! constant gravity
-          dpdr_cell = grav_const
+          dpdr_cell = g / Rr
 
        endif
 
@@ -603,7 +603,7 @@ contains
     use bl_constants_module
     use geometry, only: spherical, r_edge_loc, nr_fine, nlevs_radial, nr, &
          numdisjointchunks, r_start_coord, r_end_coord
-    use probin_module, only: grav_const, base_cutoff_density, &
+    use probin_module, only: base_cutoff_density, &
          do_planar_invsq_grav, planar_invsq_mass, do_2d_planar_octant, ref_ratio, g, Rr, c
     use fundamental_constants_module, only: Gconst
     use restrict_base_module
@@ -720,7 +720,7 @@ contains
        else
 
           ! constant gravity
-          dpdr_edge = grav_const
+          dpdr_edge = g/Rr
 
        endif
 
@@ -850,7 +850,7 @@ contains
 
     use bl_constants_module
     use geometry, only: spherical, r_edge_loc, nr_fine, nlevs_radial, nr
-    use probin_module, only: grav_const, base_cutoff_density, &
+    use probin_module, only: base_cutoff_density, &
          do_planar_invsq_grav, planar_invsq_mass, do_2d_planar_octant, g, Rr, c
     use fundamental_constants_module, only: Gconst
 
@@ -906,7 +906,7 @@ contains
        else
 
           ! constant gravity
-          dpdr_edge_fine(:) = grav_const
+          dpdr_edge_fine(:) = g / Rr
 
        endif
 

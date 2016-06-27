@@ -36,7 +36,7 @@ contains
     use eos_type_module
     use network, only: spec_names
     use probin_module, only: base_cutoff_density, prob_lo, &
-                             grav_const, planar_invsq_mass, &
+                             planar_invsq_mass, &
                              do_planar_invsq_grav, do_2d_planar_octant, &
                              print_init_hse_diag, g, Rr, c
     use variables, only: rho_comp, rhoh_comp, temp_comp, spec_comp, trac_comp, ntrac
@@ -66,7 +66,7 @@ contains
 
     real(kind=dp_t), parameter :: TINY = 1.0d-10
 
-    real(kind=dp_t) :: mencl, gg, r_l, r_r, dpdr, rhog
+    real(kind=dp_t) :: r_l, r_r, dpdr, rhog
     real(kind=dp_t) :: max_hse_error
 
     logical, save :: firstCall = .true.
@@ -213,13 +213,6 @@ contains
     end do
 
     ! check whether we are in HSE
-
-    mencl = zero
-
-    if (spherical .eq. 1 .OR. do_2d_planar_octant .eq. 1) then
-       mencl = four3rd*m_pi*dr(n)**3*s0_init(0,rho_comp)
-    endif
-
     max_hse_error = -1.d30
 
     do r=1,nr(n)-1
@@ -231,18 +224,6 @@ contains
 
           r_r = starting_rad + dble(r+1)*dr(n)
           r_l = starting_rad + dble(r)*dr(n)
-
-          if (spherical .eq. 1 .OR. do_2d_planar_octant .eq. 1) then
-             gg = -Gconst*mencl/r_l**2
-             mencl = mencl &
-                  + four3rd*m_pi*dr(n)*(r_l**2+r_l*r_r+r_r**2)*s0_init(r,rho_comp)
-          else
-             if (.not. do_planar_invsq_grav) then
-                gg = grav_const
-             else
-                gg = -Gconst*planar_invsq_mass / r_l**2
-             endif
-          endif
 
           dpdr = (p0_init(r) - p0_init(r-1))/dr(n)
           rhog = (c**2 * HALF*(s0_init(r,rhoh_comp) + s0_init(r-1,rhoh_comp)) + HALF*(p0_init(r) + p0_init(r-1))) * &

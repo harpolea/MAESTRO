@@ -126,8 +126,6 @@ contains
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot,rho_Hnuc,rho_Hext,p0_old, &
                      halfdt,dx,the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam)
 
-    print *, 'DID I GET HERE???'
-
     do n=1,nlevs
        call destroy(s1(n))
     end do

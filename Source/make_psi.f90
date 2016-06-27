@@ -1,4 +1,4 @@
-! Create the psi term, where psi = D_0 p_0/Dt 
+! Create the psi term, where psi = D_0 p_0/Dt
 
 module make_psi_module
 
@@ -9,27 +9,33 @@ module make_psi_module
 
 contains
 
-  subroutine make_psi_planar(etarho_cc,psi)
+  subroutine make_psi_planar(etarho_cc,psi,dpdr_cell,D0_cell,u0_1d)
 
     use bl_constants_module
     use geometry, only: base_cutoff_density_coord, r_start_coord, r_end_coord, &
          numdisjointchunks, nlevs_radial
-    use probin_module, only: grav_const
+    !use probin_module, only: grav_const
     use restrict_base_module
 
     real(kind=dp_t), intent(in   ) :: etarho_cc(:,0:)
     real(kind=dp_t), intent(inout) ::       psi(:,0:)
-    
+    real(kind=dp_t), intent(in   ) ::       dpdr_cell(:,0:)
+    real(kind=dp_t), intent(in   ) ::       D0_cell(:,0:)
+    real(kind=dp_t), intent(in   ) ::       u0_1d(:,0:)
+
     ! Local variables
     integer         :: r,i,n
-   
+
     psi = ZERO
+
+    !! FIXME: check this is correct
 
     do n=1,nlevs_radial
        do i=1,numdisjointchunks(n)
           do r = r_start_coord(n,i), r_end_coord(n,i)
              if (r .lt. base_cutoff_density_coord(n)) then
-                psi(n,r) = etarho_cc(n,r) * abs(grav_const)
+                !psi(n,r) = etarho_cc(n,r) * abs(grav_const)
+                psi(n,r) = - etarho_cc(n,r) * dpdr_cell(n,r) / (D0_cell(n,r) * u0_1d(n,r))
              end if
           end do
        end do
@@ -37,7 +43,7 @@ contains
 
     call restrict_base(psi,.true.)
     call fill_ghost_base(psi,.true.)
-    
+
   end subroutine make_psi_planar
 
   subroutine make_psi_spherical(psi,w0,gamma1bar,p0_avg,Sbar_in)
@@ -50,7 +56,7 @@ contains
     real(kind=dp_t), intent(in   ) :: gamma1bar(:,0:)
     real(kind=dp_t), intent(in   ) ::    p0_avg(:,0:)
     real(kind=dp_t), intent(in   ) ::   Sbar_in(:,0:)
-    
+
     ! local variables
     integer :: r
     real(kind=dp_t) :: div_w0_sph
@@ -70,5 +76,5 @@ contains
     !$OMP END PARALLEL DO
 
   end subroutine make_psi_spherical
-  
+
 end module make_psi_module
