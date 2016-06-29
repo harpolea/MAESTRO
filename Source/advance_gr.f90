@@ -278,7 +278,10 @@ contains
     call calcW(alpha, beta, gam, uold, mla, W_lor,the_bc_tower%bc_tower_array)
     call calcu0(alpha, beta, gam, W_lor, u0, mla,the_bc_tower%bc_tower_array)
     ! set u0_1d to be average
+    ! TODO: I think a better way would be to calculate u0_1d using w0
     call average(mla,u0,u0_1d,dx,1)
+
+    !print *, 'Dh0_old', Dh0_old
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 1 -- react the full state and then base state through dt/2
@@ -587,10 +590,10 @@ contains
        call setval(etarhoflux(n),ZERO,all=.true.)
     end do
 
-    !! FIXME: check p0_new is not being used before being initialised here
+    !! TODO: have used p0_old here as this is before p0 update
 
     call density_advance(mla,1,s1,s2,sedge,sflux,scal_force,umac,w0,w0mac,etarhoflux, &
-                         D0_old,D0_new,p0_new,D0_predicted_edge, &
+                         D0_old,D0_new,p0_old,D0_predicted_edge, &
                          dx,dt,the_bc_tower%bc_tower_array)
 
     ! Now compute the new etarho
@@ -608,12 +611,12 @@ contains
     end if
 
     !do n = 1, nlevs
-    !    do i = 1, nfabs(alpha(n))
-    !        sp => dataptr(alpha(n), i)
+    !    do i = 1, nfabs(u0(n))
+    !        sp => dataptr(u0(n), i)
     !    enddo
     !enddo
 
-    !print *, 'sp', sp(:,:,:,:)
+    !print *, 'sp', sp(5,5,:,:)
 
     ! FIXME; I think this should go after the enthalpy update in 4H
     ! 4D
@@ -622,14 +625,6 @@ contains
     if (use_etarho .and. evolve_base_state) then
        call average(mla,s2,Dh0_new,dx,rhoh_comp)
        call compute_cutoff_coords(Dh0_new)
-    end if
-
-    !! FIXME: I think p0_new is being used before initialisation here
-
-    if (evolve_base_state) then
-       call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
-    else
-       dpdr_cell_new = dpdr_cell_old
     end if
 
     ! 4E
@@ -641,6 +636,8 @@ contains
 
        ! FIXME: need to recalculate u0 at some point
        call enforce_TOV(Dh0_new,p0_new,u0_1d)
+
+       call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
 
        ! 4F
 
@@ -675,6 +672,7 @@ contains
        end if
 
     else
+       dpdr_cell_new = dpdr_cell_old
 
        p0_new = p0_old
 
@@ -812,7 +810,7 @@ contains
           call destroy(gamma1(n))
        end do
 
-       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,dpdr_cell_new)
+       call make_div_coeff(div_coeff_new,D0_new,Dh0_new,u0_1d,p0_new,gamma1bar,dpdr_cell_new)
 
     else
 
@@ -821,12 +819,24 @@ contains
 
     end if
 
+    !print *, 'div_coeff_old: ', div_coeff_old
+    !print *, 'div_coeff_new: ', div_coeff_new
+    !print *, 'p0_old: ', p0_old
+
+    !print *, 'Dh0_new: ', Dh0_new
+    !print *, 'dpdr_cell_new: ', dpdr_cell_new
+    !print *, 'p0_new: ', p0_new
+
+    !print *, 'gamm1bar', gamma1bar
+    ! FIXME: hack to make it work - get rid!!!!
+    !div_coeff_new = div_coeff_old
+
     div_coeff_nph = HALF*(div_coeff_old + div_coeff_new)
 
     !print *, 'Dh0_new: ', Dh0_new
-
+    !print *, 'Dh0_old: ', Dh0_old
     !print *, 'dpdr_cell_new: ', dpdr_cell_new
-
+    !print *, 'dpdr_cell_old: ', dpdr_cell_old
     !print *, 'div_coeff_old: ', div_coeff_old
 
     !print *, 'div_coeff_new: ', div_coeff_new
@@ -1180,8 +1190,8 @@ contains
        call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
        D0_nph = HALF*(D0_old+D0_new)
        Dh0_nph = HALF*(Dh0_old+Dh0_new)
-       p0_nph = HALF*(p0_old+p0_new)
-       call make_dpdr_cell(dpdr_cell_nph,Dh0_nph,p0_nph,u0_1d)
+       !p0_nph = HALF*(p0_old+p0_new)
+       !call make_dpdr_cell(dpdr_cell_nph,Dh0_nph,p0_nph,u0_1d)
     else
        dpdr_cell_new = dpdr_cell_old
        D0_nph = D0_old
@@ -1198,6 +1208,7 @@ contains
        ! FIXME: recalculate u0 at some point
        call enforce_TOV(Dh0_new,p0_new,u0_1d)
        p0_nph = HALF*(p0_old+p0_new)
+       call make_dpdr_cell(dpdr_cell_nph,Dh0_nph,p0_nph,u0_1d)
 
        ! 8F
 
@@ -1369,9 +1380,22 @@ contains
        end do
 
        !  We used to call this even if evolve_base was false,but we don't need to
-       call make_div_coeff(div_coeff_new,Dh0_new,u0_1d,p0_new,gamma1bar,dpdr_cell_new)
+       call make_div_coeff(div_coeff_new,D0_new,Dh0_new,u0_1d,p0_new,gamma1bar,dpdr_cell_new)
 
     end if
+
+    !print *, 'div_coeff_old: ', div_coeff_old
+    !print *, 'div_coeff_new: ', div_coeff_new
+    !print *, 'p0_old: ', p0_old
+
+    !print *, 'Dh0_new: ', Dh0_new
+    !print *, 'dpdr_cell_new: ', dpdr_cell_new
+    !print *, 'p0_new: ', p0_new
+
+    !print *, 'gamm1bar', gamma1bar
+
+    ! FIXME: hack to make it work - get rid!!!!
+    !div_coeff_new = div_coeff_old
 
     div_coeff_nph = HALF*(div_coeff_old+div_coeff_new)
 

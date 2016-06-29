@@ -98,8 +98,8 @@ contains
     endif
 
     if (p%icomp_divw0 > 0) p%names(p%icomp_divw0) = "divw0"
-    if (p%icomp_rho0 > 0) p%names(p%icomp_rho0)  = "rho0"
-    if (p%icomp_rhoh0 > 0) p%names(p%icomp_rhoh0) = "rhoh0"
+    if (p%icomp_rho0 > 0) p%names(p%icomp_rho0)  = "D0"
+    if (p%icomp_rhoh0 > 0) p%names(p%icomp_rhoh0) = "Dh0"
     if (p%icomp_h0 > 0) p%names(p%icomp_h0)    = "h0"
     if (p%icomp_p0 > 0) p%names(p%icomp_p0)    = "p0"
 
@@ -171,7 +171,7 @@ contains
   subroutine make_plotfile(p,dirname,mla,u,s,pi,gpi,rho_omegadot, &
                            rho_Hnuc,rho_Hext, &
                            thermal,Source,sponge,mba,dx, &
-                           the_bc_tower,w0,u0_1d,rho0,rhoh0,p0, &
+                           the_bc_tower,w0,u0_1d,D0,Dh0,p0, &
                            tempbar,gamma1bar,etarho_cc, &
                            normal,dt,particles,write_pf_time)
 
@@ -219,8 +219,8 @@ contains
     type(bc_tower)   , intent(in   ) :: the_bc_tower
     real(dp_t)       , intent(in   ) :: w0(:,0:)
     real(dp_t)       , intent(in   ) :: u0_1d(:,0:)
-    real(dp_t)       , intent(in   ) :: rho0(:,0:)
-    real(dp_t)       , intent(in   ) :: rhoh0(:,0:)
+    real(dp_t)       , intent(in   ) :: D0(:,0:)
+    real(dp_t)       , intent(in   ) :: Dh0(:,0:)
     real(dp_t)       , intent(in   ) :: p0(:,0:)
     real(dp_t)       , intent(in   ) :: tempbar(:,0:)
     real(dp_t)       , intent(in   ) :: gamma1bar(:,0:)
@@ -236,7 +236,7 @@ contains
     type(multifab) ::    pi_cc(mla%nlevel)
 
     real(dp_t)  :: div_coeff(nlevs_radial,0:nr_fine-1)
-    real(dp_t)  :: grav_cell(nlevs_radial,0:nr_fine-1)
+    real(dp_t)  :: dpdr_cell(nlevs_radial,0:nr_fine-1)
 
     real(dp_t) :: entropybar(nlevs_radial,0:nr_fine-1)
     real(dp_t) ::         h0(nlevs_radial,0:nr_fine-1)
@@ -290,17 +290,17 @@ contains
        ! rhopert and rhohpert
        if (spherical .eq. 1) then
           if (p%icomp_rhopert > 0) then
-             call make_rhopert( plotdata(n),p%icomp_rhopert, s(n), rho0(1,:),dx(n,:))
+             call make_rhopert( plotdata(n),p%icomp_rhopert, s(n), D0(1,:),dx(n,:))
           endif
           if (p%icomp_rhohpert > 0) then
-             call make_rhohpert(plotdata(n),p%icomp_rhohpert,s(n),rhoh0(1,:),dx(n,:))
+             call make_rhohpert(plotdata(n),p%icomp_rhohpert,s(n),Dh0(1,:),dx(n,:))
           endif
        else
           if (p%icomp_rhopert > 0) then
-             call make_rhopert( plotdata(n),p%icomp_rhopert, s(n), rho0(n,:),dx(n,:))
+             call make_rhopert( plotdata(n),p%icomp_rhopert, s(n), D0(n,:),dx(n,:))
           endif
           if (p%icomp_rhohpert > 0) then
-             call make_rhohpert(plotdata(n),p%icomp_rhohpert,s(n),rhoh0(n,:),dx(n,:))
+             call make_rhohpert(plotdata(n),p%icomp_rhohpert,s(n),Dh0(n,:),dx(n,:))
           endif
        endif
 
@@ -415,9 +415,9 @@ contains
        end do
     endif
 
-    ! rho0
+    ! D0
     if (p%icomp_rho0 > 0) then
-       call put_1d_array_on_cart(rho0,tempfab,dm+rho_comp,.false.,.false.,dx, &
+       call put_1d_array_on_cart(D0,tempfab,dm+rho_comp,.false.,.false.,dx, &
                                  the_bc_tower%bc_tower_array,mla)
 
        do n=1,nlevs
@@ -425,9 +425,9 @@ contains
        end do
     endif
 
-    ! rhoh0
+    ! Dh0
     if (p%icomp_rhoh0 > 0) then
-       call put_1d_array_on_cart(rhoh0,tempfab,dm+rhoh_comp,.false.,.false.,dx, &
+       call put_1d_array_on_cart(Dh0,tempfab,dm+rhoh_comp,.false.,.false.,dx, &
                                  the_bc_tower%bc_tower_array,mla)
 
        do n=1,nlevs
@@ -441,10 +441,10 @@ contains
           h0 = ZERO
        else
           if (spherical .eq. 1) then
-             ! only one level of base state so rho0 is defined everywhere
-             h0 = rhoh0 / rho0
+             ! only one level of base state so D0 is defined everywhere
+             h0 = Dh0 / D0
           else
-             ! for Cartesian, rho0 will be zero in index locations where
+             ! for Cartesian, D0 will be zero in index locations where
              ! there is no grid at that resolution.  Prevent dividing
              ! by zero
              h0(:,:) = ZERO
@@ -452,7 +452,7 @@ contains
              do n = 1, nlevs
                 do j = 1,numdisjointchunks(n)
                    do r = r_start_coord(n,j), r_end_coord(n,j)
-                      h0(n,r) = rhoh0(n,r)/rho0(n,r)
+                      h0(n,r) = Dh0(n,r)/D0(n,r)
                    enddo
                 enddo
              enddo
@@ -651,8 +651,8 @@ contains
 
     if (use_alt_energy_fix) then
        ! make beta_0 on a multifab
-       call make_grav_cell(grav_cell,rho0)
-       call make_div_coeff(div_coeff,rho0,u0_1d,p0,gamma1bar,grav_cell)
+       call make_dpdr_cell(dpdr_cell,Dh0,p0,u0_1d)
+       call make_div_coeff(div_coeff,D0,Dh0,u0_1d,p0,gamma1bar,dpdr_cell)
 
        call put_1d_array_on_cart(div_coeff,tempfab,foextrap_comp,.false.,.false.,dx, &
                                  the_bc_tower%bc_tower_array,mla)

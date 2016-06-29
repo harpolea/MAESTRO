@@ -37,7 +37,7 @@ contains
     use network, only: spec_names
     use probin_module, only: base_cutoff_density, prob_lo, &
                              planar_invsq_mass, &
-                             do_planar_invsq_grav, do_2d_planar_octant, &
+                             do_2d_planar_octant, &
                              print_init_hse_diag, g, Rr, c
     use variables, only: rho_comp, rhoh_comp, temp_comp, spec_comp, trac_comp, ntrac
     use geometry, only: dr, spherical, nr

@@ -170,7 +170,7 @@ contains
        call multifab_build(div_coeff_3d(n), mla%la(n), 1, 1)
     end do
 
-    print *, 'div_coeff_old', div_coeff_old
+    !print *, 'div_coeff_old', div_coeff_old
 
     call put_1d_array_on_cart(div_coeff_old,div_coeff_3d,foextrap_comp,.false., &
                               .false.,dx,the_bc_tower%bc_tower_array,mla)

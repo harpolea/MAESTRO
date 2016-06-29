@@ -85,8 +85,11 @@ contains
     real(dp_t)                   :: abs_solver_eps
     integer                      :: stencil_order,i,n,comp,dm,nlevs
     logical                      :: use_rhs, use_div_coeff_1d, use_div_coeff_cart_edge
+    integer :: lo(3), hi(3)
 
     type(bl_prof_timer), save :: bpt
+
+    real(kind=dp_t), pointer :: sp(:,:,:,:)
 
     call build(bpt, "macproject")
 
@@ -152,6 +155,11 @@ contains
        end do
     end if
 
+    !!!! FIXME: div_coeff_1d and div_coeff_edge have died :(
+
+    !print *, 'div_coeff_1d', div_coeff_1d
+    !print *, 'div_coeff_1d_edge', div_coeff_1d_edge
+
     if (use_div_coeff_1d) then
        do n = 1,nlevs
           call mult_edge_by_1d_coeff(umac(n,:),div_coeff_1d(n,:),div_coeff_1d_edge(n,:),&
@@ -184,6 +192,7 @@ contains
 
     ! now make beta = beta_0/D
     if (use_div_coeff_1d) then
+       !!! CODE GOES HERE
        do n = 1,nlevs
           call mult_edge_by_1d_coeff(beta(n,:),div_coeff_1d(n,:), &
                                      div_coeff_1d_edge(n,:),.true.)
@@ -215,7 +224,21 @@ contains
 !      abs_solver_eps = eps * abs_eps
 !   end if
 
+    !!!!!! FIXME: beta has gone from e-20 to e-221
     rel_solver_eps = min(eps_mac*mac_level_factor**(nlevs-1), eps_mac_max)
+
+    do n = 1, nlevs
+        do comp = 1,dm
+            do i = 1, nfabs(beta(n,comp ))
+               sp => dataptr(beta(n,comp), i)
+               lo =  lwb(get_box(beta(n,comp), i))
+               hi =  upb(get_box(beta(n,comp), i))
+               !print *, sp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
+           enddo
+        enddo
+    enddo
+
+    !print *, 'before:', sp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
 
     if (use_hypre) then
        call mac_hypre(mla,rh,phi,fine_flx,alpha,beta,dx,&
@@ -226,6 +249,19 @@ contains
                           the_bc_tower,press_comp,stencil_order,&
                           rel_solver_eps,abs_solver_eps)
     endif
+
+    do n = 1, nlevs
+        do comp = 1,dm
+            do i = 1, nfabs(beta(n,comp ))
+               sp => dataptr(beta(n,comp), i)
+               lo =  lwb(get_box(beta(n,comp), i))
+               hi =  upb(get_box(beta(n,comp), i))
+               !print *, sp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
+           enddo
+        enddo
+    enddo
+
+    !print *, 'after: ', sp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
 
     call mkumac(mla,umac,phi,beta,fine_flx,dx,the_bc_tower)
 

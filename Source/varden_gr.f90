@@ -429,7 +429,9 @@ subroutine varden()
         call destroy(gamma1(n))
      end do
 
-     call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
+     !print *, 'Dh0 in varden', Dh0_old
+
+     call make_div_coeff(div_coeff_old,D0_old,Dh0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
 
      if(do_initial_projection) then
         call initial_proj(uold,sold,pi,gpi,Source_old,normal,hgrhs,thermal2, &
@@ -1086,7 +1088,7 @@ subroutine varden()
 
 
            ! div_coeff_old needs to be recomputed
-           call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
+           call make_div_coeff(div_coeff_old,D0_old,Dh0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
 
 
            ! redistribute the particles to their new processor locations

@@ -683,7 +683,7 @@ contains
        deallocate(gamma1)
 
        ! compute div_coeff_old
-       call make_div_coeff(div_coeff_old,D0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
+       call make_div_coeff(div_coeff_old,D0_old,Dh0_old,u0_1d,p0_old,gamma1bar,dpdr_cell)
 
        ! recompute time step
        dt = 1.d20
@@ -803,10 +803,10 @@ contains
        call multifab_build(    rho_Hnuc2(n), mla%la(n),     1, 0)
        call multifab_build(     rho_Hext(n), mla%la(n),     1, 0)
        call multifab_build(     thermal2(n), mla%la(n),     1, 0)
-       call multifab_build(        alpha(n), mla%la(n),     1, 0)
-       call multifab_build(         beta(n), mla%la(n),    dm, 0)
-       call multifab_build(          gam(n), mla%la(n),    dm, 0)
-       call multifab_build(           u0(n), mla%la(n),     1, 0)
+       call multifab_build(        alpha(n), mla%la(n),     1, ng_s)
+       call multifab_build(         beta(n), mla%la(n),    dm, ng_s)
+       call multifab_build(          gam(n), mla%la(n),    dm, ng_s)
+       call multifab_build(           u0(n), mla%la(n),     1, ng_s)
        call multifab_build(            W(n), mla%la(n),     1, 0)
 
        call setval(         uold(n), ZERO, all=.true.)
@@ -1018,7 +1018,7 @@ contains
     time = ZERO
     dt = 1.d20
 
-    print *, 'NOOO ADAPTIVE GRIDS'
+    !print *, 'NOOO ADAPTIVE GRIDS'
     dm = dm_in
 
     ! set up hi & lo to carry indexing info

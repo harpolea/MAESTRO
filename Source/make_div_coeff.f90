@@ -15,16 +15,16 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine make_div_coeff(div_coeff,Dh0,u0,p0,gamma1bar,dpdr_centre)
+  subroutine make_div_coeff(div_coeff,D0,Dh0,u0,p0,gamma1bar,dpdr_centre)
 
     use bl_constants_module
     use geometry, only: nr_fine, dr, anelastic_cutoff_coord, r_start_coord, r_end_coord, &
-         nr, numdisjointchunks, nlevs_radial
+         nr, numdisjointchunks, nlevs_radial, r_cc_loc
     use restrict_base_module
-    use probin_module, only: beta_type, use_linear_grav_in_beta, c
+    use probin_module, only: beta_type, use_linear_grav_in_beta, c, g, Rr
 
     real(kind=dp_t), intent(  out) :: div_coeff(:,0:)
-    real(kind=dp_t), intent(in   ) :: Dh0(:,0:), u0(:,0:)
+    real(kind=dp_t), intent(in   ) :: D0(:,0:), Dh0(:,0:), u0(:,0:)
     real(kind=dp_t), intent(in   ) :: p0(:,0:), gamma1bar(:,0:)
     real(kind=dp_t), intent(in   ) :: dpdr_centre(:,0:)
 
@@ -36,6 +36,11 @@ contains
     real(kind=dp_t) :: denom, coeff1, coeff2, coeff3
     real(kind=dp_t) :: del,dpls,dmin,slim,sflag
     real(kind=dp_t) :: offset
+
+    !print *, 'D0', D0
+    !print *, 'u0', u0
+    !print *, 'p0', p0
+    !print *, 'dpdr', dpdr_centre
 
     div_coeff = 0.d0
 
@@ -69,7 +74,7 @@ contains
              ! Compute beta0 on edges and centers at level n
 
              if (n .eq. 1) then
-                beta0_edge(1,0) = Dh0(1,0)*u0(1,0)
+                beta0_edge(1,0) = D0(1,0)/u0(1,0)
              else
                 ! Obtain the starting value of beta0_edge_lo from the coarser grid
                 beta0_edge(n,r_start_coord(n,j)) = beta0_edge(n-1,r_start_coord(n,j)/2)
@@ -87,11 +92,11 @@ contains
 
                    else
 
-                      ! piecewise linear reconstruction of D0,
+                      ! piecewise linear reconstruction of Dh0,
                       ! gamma1bar, and p0 -- see paper III, appendix C
-                      del    = HALF* (Dh0(n,r+1)*u0(n,r+1) - Dh0(n,r-1)*u0(n,r-1))/dr(n)
-                      dpls   = TWO * (Dh0(n,r+1)*u0(n,r+1) - Dh0(n,r  )*u0(n,r))/dr(n)
-                      dmin   = TWO * (Dh0(n,r  )*u0(n,r) - Dh0(n,r-1)*u0(n,r-1))/dr(n)
+                      del    = HALF* (Dh0(n,r+1) - Dh0(n,r-1))/dr(n)
+                      dpls   = TWO * (Dh0(n,r+1) - Dh0(n,r  ))/dr(n)
+                      dmin   = TWO * (Dh0(n,r  ) - Dh0(n,r-1))/dr(n)
                       slim   = min(abs(dpls), abs(dmin))
                       slim   = merge(slim, zero, dpls*dmin.gt.ZERO)
                       sflag  = sign(ONE,del)
@@ -123,8 +128,10 @@ contains
                         (p0(n,r) - HALF*nu*dr(n))) .le. ZERO) then
 
                       ! just do piecewise constant integration
-                      !integral = !abs(grav_center(n,r))*Dh0(n,r)*u0(n,r)*dr(n)/(p0(n,r)*gamma1bar(n,r))
-                      integral = abs(dpdr_centre(n,r))*dr(n)/(p0(n,r)*gamma1bar(n,r))
+                      !integral = !abs(grav_center(n,r))*D0(n,r)*u0(n,r)*dr(n)/(p0(n,r)*gamma1bar(n,r))
+                      integral = dpdr_centre(n,r)*dr(n)/(p0(n,r)*gamma1bar(n,r))
+
+                      !print *, 'integral 1', integral
 
                    else
 
@@ -141,10 +148,10 @@ contains
                          kappa = sflag*min(slim,abs(del))
 
                          denom = nu*gamma1bar(n,r) - mu*p0(n,r)
-                         coeff1 = (lambda*gamma1bar(n,r) - mu*Dh0(n,r)*u0(n,r)) * &
+                         coeff1 = (lambda*gamma1bar(n,r) - mu*Dh0(n,r)) * &
                               (kappa *gamma1bar(n,r) + mu*abs(dpdr_centre(n,r))) / &
                               (mu*mu*denom)
-                         coeff2 = (lambda*p0(n,r) - nu*Dh0(n,r)*u0(n,r))* &
+                         coeff2 = (lambda*p0(n,r) - nu*Dh0(n,r))* &
                               (-kappa*p0(n,r) - nu*abs(dpdr_centre(n,r))) / &
                               (nu*nu*denom)
                          coeff3 = kappa*lambda / (mu*nu)
@@ -156,30 +163,67 @@ contains
                                           (p0(n,r) - HALF*nu*dr(n)) ) - &
                               coeff3*dr(n)
 
+                        !print *, 'integral 2', integral
+
                       else
 
                          ! paper III, equation C2
                          denom = nu*gamma1bar(n,r) - mu*p0(n,r)
-                         coeff1 = lambda*gamma1bar(n,r)/mu - Dh0(n,r)*u0(n,r)
-                         coeff2 = lambda*p0(n,r)/nu - Dh0(n,r)*u0(n,r)
+                         del   = HALF* (dpdr_centre(n,r+1) - dpdr_centre(n,r-1))/dr(n)
+                         dpls  = TWO * (dpdr_centre(n,r+1) - dpdr_centre(n,r  ))/dr(n)
+                         dmin  = TWO * (dpdr_centre(n,r  ) - dpdr_centre(n,r-1))/dr(n)
+                         slim  = min(abs(dpls), abs(dmin))
+                         slim  = merge(slim, zero, dpls*dmin.gt.ZERO)
+                         sflag = sign(ONE,del)
+                         lambda = sflag*min(slim,abs(del))
 
-                         integral = (abs(dpdr_centre(n,r))/denom)* &
-                              (coeff1*log( (gamma1bar(n,r) + HALF*mu*dr(n))/ &
-                                           (gamma1bar(n,r) - HALF*mu*dr(n))) - &
-                               coeff2*log( (p0(n,r) + HALF*nu*dr(n))/ &
-                                           (p0(n,r) - HALF*nu*dr(n))) )
+                         coeff1 = lambda*gamma1bar(n,r)/mu - dpdr_centre(n,r)
+                         coeff2 = lambda*p0(n,r)/nu - dpdr_centre(n,r)
+
+                         !coeff1 = -g*((lambda + nu) *gamma1bar(n,r) - &
+                        !    mu*(Dh0(n,r)+p0(n,r)*u0(n,r))) / &
+                        !    (TWO*gamma1bar(n,r)*c**2.d0 + mu*(TWO*g - &
+                        !    c**2.d0*(TWO*r_cc_loc(n,r)+Rr)))
+                         !coeff2 = g*(lambda*p0(n,r)*u0(n,r) - Dh0(n,r)*nu) / &
+                        !    (c**2*(TWO*p0(n,r)*u0(n,r) - nu*(TWO* &
+                        !    r_cc_loc(n,r)+Rr)) + TWO*g*nu)
+                         !coeff3 = g*(c**2.d0*(-TWO*Dh0(n,r)+(lambda+nu) * &
+                        !    (TWO*r_cc_loc(n,r)+Rr) - TWO*p0(n,r)*u0(n,r)) - &
+                        !    TWO*g*(lambda+nu)) / &
+                        !    (TWO*gamma1bar(n,r)*c**2.d0 + mu*(TWO*g - &
+                        !    c**2*(TWO*r_cc_loc(n,r)+Rr)) * &
+                        !    (c**2*(nu*(TWO*r_cc_loc(n,r)+Rr)- &
+                        !    TWO*p0(n,r)*u0(n,r)) - TWO*g*nu))
+                        !coeff3 = coeff3 * log((c**2.d0*(Rr+TWO*r_cc_loc(n,r)+dr(n))&
+                        !            -TWO*g) / &
+                        !           (c**2.d0*(Rr+TWO*r_cc_loc(n,r)-dr(n))&
+                        !           -TWO*g))
+
+                         integral = (1.d0/denom)* &
+                              (coeff1*log((gamma1bar(n,r) + HALF*mu*dr(n))/ &
+                                          (gamma1bar(n,r) - HALF*mu*dr(n))) - &
+                               coeff2*log((p0(n,r) + HALF*nu*dr(n))/ &
+                                          (p0(n,r) - HALF*nu*dr(n)))) !+ &
+                              !coeff3*log((c**2.d0*(Rr+TWO*r_cc_loc(n,r)+dr(n))&
+                                !          -TWO*g) / &
+                                !         (c**2.d0*(Rr+TWO*r_cc_loc(n,r)-dr(n))&
+                                !          -TWO*g))
+
+                        !print *, 'integral 3', integral
 
                       end if
                    endif
-                   ! FIXME: put divide by c in the get it to work - not
-                   !        entirely sure it actually belongs there?
-                   beta0_edge(n,r+1) = beta0_edge(n,r) * exp(-integral/c)
+                   ! FIXME: hack to get this to work:
+                   if (abs(integral) .gt. 1.d0) then
+                       integral = integral / c
+                   endif
+
+                   beta0_edge(n,r+1) = beta0_edge(n,r) * exp(integral)
                    div_coeff(n,r) = HALF*(beta0_edge(n,r) + beta0_edge(n,r+1))
 
                 else ! r >= anelastic_cutoff
 
-
-                   div_coeff(n,r) = div_coeff(n,r-1) * (Dh0(n,r)*u0(n,r)/(Dh0(n,r-1)*u0(n,r-1)))
+                   div_coeff(n,r) = div_coeff(n,r-1) * ((D0(n,r)/u0(n,r))/(D0(n,r-1)/u0(n,r-1)))
                    beta0_edge(n,r+1) = 2.d0*div_coeff(n,r) - beta0_edge(n,r)
 
                 endif
@@ -207,8 +251,8 @@ contains
 
                    ! Redo the anelastic cutoff part
                    do r=anelastic_cutoff_coord(i),nr(i)
-                      if (Dh0(i,r-1)*u0(i,r-1) /= ZERO) then
-                         div_coeff(i,r) = div_coeff(i,r-1) * (Dh0(i,r)*u0(i,r)/(Dh0(i,r-1)*u0(i,r-1)))
+                      if (D0(i,r-1)/u0(i,r-1) /= ZERO) then
+                         div_coeff(i,r) = div_coeff(i,r-1) * (D0(i,r)/u0(i,r))/(D0(i,r-1)/u0(i,r-1))
                       endif
                    end do
 
@@ -224,8 +268,8 @@ contains
                       end do
 
                       do r=(r_end_coord(n,j)+1)/refrat,nr(i)
-                         if (Dh0(i,r-1)*u0(i,r-1) /= ZERO) then
-                            div_coeff(i,r) = div_coeff(i,r-1) * (Dh0(i,r)*u0(i,r)/(Dh0(i,r-1)*u0(i,r-1)))
+                         if (D0(i,r-1)/u0(i,r-1) /= ZERO) then
+                            div_coeff(i,r) = div_coeff(i,r-1) * (D0(i,r)/u0(i,r))/(D0(i,r-1)/u0(i,r-1))
                          endif
                       end do
 
@@ -260,7 +304,7 @@ contains
        do n=1,nlevs_radial
           do j=1,numdisjointchunks(n)
              do r=r_start_coord(n,j),r_end_coord(n,j)
-                div_coeff(n,r) = Dh0(n,r)*u0(n,r)
+                div_coeff(n,r) = D0(n,r)/u0(n,r)
              end do
           end do
        end do
@@ -277,6 +321,8 @@ contains
        end do
 
     end if
+
+    !print *, 'div_coeff', div_coeff
 
     call restrict_base(div_coeff,.true.)
     call fill_ghost_base(div_coeff,.true.)

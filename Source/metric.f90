@@ -62,9 +62,8 @@ contains
                 betap = 0.d0
 
                 do i = lo(3), hi(3)
-
-
                     rad = prob_lo(3) + (dble(i) + HALF) * dx(n,3)
+                    !rad = (dble(i) + HALF) * dx(n,3)
                     !print *, 'radial coord: ', rad
                     !print *,  2.d0 * (1.d0 - rad / Rr) * g / c**2
                     alphap(:,:,i,1) = c * sqrt(1.d0 - 2.d0 * (1.d0 - rad / Rr) * g / c**2)
@@ -316,6 +315,53 @@ contains
                                   ng=u0(1)%ng)
 
     end subroutine calcu0
+
+    subroutine calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_level)
+        ! Calculates timelike coordinate of 3+1 velocity
+        ! using Lorentz factor and alpha:
+        ! W = alpha * u0
+        use geometry   , only : nlevs_radial, nr_fine
+        use probin_module, only : c
+        use average_module   , only : average
+
+        type(multifab)    , intent(in)    :: alpha(:)
+        type(multifab)    , intent(in)    :: beta(:)
+        type(multifab)    , intent(in)    :: gam(:)
+        real(dp_t)        ,  intent(in)   :: w0(:,0:)
+        real(dp_t)        ,  intent(inout):: u0_1d(:,0:)
+        type(ml_layout)   , intent(inout) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
+
+        real(kind=dp_t), allocatable :: alpha_1d(:,:)
+        real(kind=dp_t), allocatable :: beta_1d(:,:)
+        real(kind=dp_t), allocatable :: gam_1d(:,:)
+        integer     :: nlevs, n, i, dm
+
+        nlevs = mla%nlevel
+        dm = mla%dim
+
+        allocate(              alpha_1d(nlevs_radial,0:nr_fine))
+        allocate(              beta_1d(nlevs_radial,0:nr_fine))
+        allocate(              gam_1d(nlevs_radial,0:nr_fine))
+
+        do n = 1, nlevs
+            do i = 1, nfabs(alpha(n))
+                !alphap => dataptr(alpha(n),i)
+                !betap => dataptr(beta(n),i)
+                !gamp => dataptr(gam(n),i)
+
+                !u0p(:,:,:,1) = Wp(:,:,:,1) / alphap(:,:,:,1)
+            enddo
+        enddo
+
+        ! fill ghosts
+        !call ml_restrict_and_fill(nlevs,u0,mla%mba%rr,the_bc_level, &
+        !                          icomp=1, &
+        !                          bcomp=1, &
+        !                          nc=1, &
+        !                          ng=u0(1)%ng)
+
+    end subroutine calcu0_1d
 
     subroutine g(alpha, beta, gam, x, met)
         ! Returns metric components at coordinate x
