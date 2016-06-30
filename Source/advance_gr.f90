@@ -130,6 +130,7 @@ contains
 
     ! local
     type(multifab) ::             Dh_half(mla%nlevel)
+    type(multifab) ::             Dhu0(mla%nlevel)
     type(multifab) ::       w0_force_cart(mla%nlevel)
     type(multifab) ::              macrhs(mla%nlevel)
     type(multifab) ::              macphi(mla%nlevel)
@@ -278,8 +279,11 @@ contains
     call calcW(alpha, beta, gam, uold, mla, W_lor,the_bc_tower%bc_tower_array)
     call calcu0(alpha, beta, gam, W_lor, u0, mla,the_bc_tower%bc_tower_array)
     ! set u0_1d to be average
-    ! TODO: I think a better way would be to calculate u0_1d using w0
-    call average(mla,u0,u0_1d,dx,1)
+    ! CHANGED: I think a better way would be to calculate u0_1d using w0
+    !call average(mla,u0,u0_1d,dx,1)
+    !print *, 'u0_1d by averaging: ', u0_1d
+    call calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_tower%bc_tower_array, dx)
+    !print *, 'u0_1d by w0: ', u0_1d
 
     !print *, 'Dh0_old', Dh0_old
 
@@ -349,8 +353,10 @@ contains
           call multifab_build(peos(n), mla%la(n), 1, 0)
        end do
 
+       call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
        ! peos_old now holds the thermodynamic p computed from sold(rho,h,X)
-       call makePfromRhoH(sold,sold,peos,mla,the_bc_tower%bc_tower_array)
+       call makePfromRhoH(s_prim,s_prim,peos,mla,the_bc_tower%bc_tower_array)
 
        ! compute peosbar = Avg(peos_old)
        call average(mla,peos,peosbar,dx,1)
@@ -698,7 +704,7 @@ contains
 
     call enthalpy_advance(mla,1,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
-                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam)
+                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam,u0)
 
     do n = 1, nlevs
        do comp = 1,dm
@@ -755,6 +761,9 @@ contains
     else
        call makeTfromRhoH(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     end if
+
+    ! TODO: maybe only update the temp comp?
+    call prim_to_cons(s2, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     if (use_thermal_diffusion) then
        ! make a copy of s2star since these are needed to compute
@@ -890,10 +899,11 @@ contains
     end do
 
     ! 6A
+    call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     ! p0 is only used for the delta_gamma1_term
     call make_S(Source_new,delta_gamma1_term,delta_gamma1, &
-                snew,uold, &
+                s_prim,u_prim, & !snew,uold, &
                 normal, &
                 rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
                 p0_old,gamma1bar,delta_gamma1_termbar,psi, &
@@ -923,8 +933,10 @@ contains
           call multifab_build(peos(n), mla%la(n), 1, 0)
        end do
 
+       call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
        ! peos_new now holds the thermodynamic p computed from snew(rho h X)
-       call makePfromRhoH(snew,snew,peos,mla,the_bc_tower%bc_tower_array)
+       call makePfromRhoH(s_prim,s_prim,peos,mla,the_bc_tower%bc_tower_array)
 
        ! compute peosbar = Avg(peos_new)
        call average(mla,peos,peosbar,dx,1)
@@ -1024,7 +1036,7 @@ contains
     end do
 
     do n=1,nlevs
-       call multifab_build(Dh_half(n), mla%la(n), 2, 1)
+       call multifab_build(Dh_half(n), mla%la(n), 2, nghost(sold(n)))
     end do
 
     call make_at_halftime(Dh_half,sold,snew,rhoh_comp,rhoh_comp,the_bc_tower%bc_tower_array,mla)
@@ -1260,7 +1272,7 @@ contains
 
     call enthalpy_advance(mla,2,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
-                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam)
+                          tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam,u0)
 
     do n=1,nlevs
        do comp = 1,dm
@@ -1323,13 +1335,16 @@ contains
        call multifab_copy_c(s2(n),temp_comp,s1(n),temp_comp,1,nghost(sold(n)))
        call multifab_copy_c(s2(n),pi_comp,  s1(n),pi_comp,  1,nghost(sold(n)))
     end do
+    call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     ! now update temperature
     if (use_tfromp) then
-       call makeTfromRhoP(s2,p0_new,mla,the_bc_tower%bc_tower_array,dx)
+       call makeTfromRhoP(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     else
-       call makeTfromRhoH(s2,p0_new,mla,the_bc_tower%bc_tower_array,dx)
+       call makeTfromRhoH(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     end if
+
+    call prim_to_cons(s2, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     do n=1,nlevs
        call destroy(s1(n))
@@ -1445,10 +1460,11 @@ contains
     end do
 
     ! 10A
+    call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     ! p0 is only used for the delta_gamma1_term
     call make_S(Source_new,delta_gamma1_term,delta_gamma1, &
-                snew,uold, &
+                s_prim,u_prim, &!snew,uold, &
                 normal, &
                 rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
                 p0_new,gamma1bar,delta_gamma1_termbar,psi, &
@@ -1557,8 +1573,10 @@ contains
              call multifab_build(peos(n), mla%la(n), 1, 0)
           enddo
 
+          call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
           ! peos_new now holds the thermodynamic p computed from snew(rho h X)
-          call makePfromRhoH(snew,snew,peos,mla,the_bc_tower%bc_tower_array)
+          call makePfromRhoH(s_prim,s_prim,peos,mla,the_bc_tower%bc_tower_array)
 
           ! compute peosbar = Avg(peos_new)
           call average(mla,peos,peosbar,dx,1)
@@ -1600,6 +1618,16 @@ contains
     end if
 
     do n=1,nlevs
+       call multifab_build(Dhu0(n), mla%la(n), 2, 0)
+       call setval(Dhu0(n), ONE, all=.true.)
+       print *, 'number of ghosts', nghost(Dhu0(n))
+       call multifab_copy_c(Dhu0(n),rhoh_comp,Dh_half(n),rhoh_comp,1,nghost(Dhu0(n)))
+       call multifab_mult_mult_c(Dhu0(n),rhoh_comp,u0(n),1,1, &
+                                 nghost(Dhu0(n)))
+    end do
+
+
+    do n=1,nlevs
        call destroy(delta_gamma1_term(n))
     end do
 
@@ -1610,7 +1638,7 @@ contains
     call put_1d_array_on_cart(div_coeff_nph,div_coeff_3d,foextrap_comp,.false., &
                               .false.,dx,the_bc_tower%bc_tower_array,mla)
 
-    call hgproject(proj_type,mla,unew,uold,Dh_half,pi,gpi,dx,dt,the_bc_tower,div_coeff_3d,hgrhs)
+    call hgproject(proj_type,mla,unew,uold,Dhu0,u0,pi,gpi,dx,dt,the_bc_tower,div_coeff_3d,hgrhs)
 
     do n = 1, nlevs
        call multifab_build(pi_cc(n), mla%la(n), 1, 0)
@@ -1627,6 +1655,7 @@ contains
     do n=1,nlevs
        call destroy(div_coeff_3d(n))
        call destroy(Dh_half(n))
+       call destroy(Dhu0(n))
     end do
 
     ! If doing pressure iterations then put hgrhs_old into hgrhs to be returned to varden.
@@ -1652,25 +1681,34 @@ contains
           call average(mla,snew,tempbar,dx,temp_comp)
        end if
 
+       call cons_to_prim(snew, unew, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
        ! output any runtime diagnostics
        ! pass in the new time value, time+dt
-       call diag(time+dt,dt,dx,snew,rho_Hnuc2,rho_Hext,thermal2,rho_omegadot2,&
+       ! doesn't actually use D0 or Dh0?
+       ! FIXME: need primitive w0 here?
+       call diag(time+dt,dt,dx,s_prim,rho_Hnuc2,rho_Hext,thermal2,rho_omegadot2,&
                  D0_new,Dh0_new,p0_new,tempbar, &
                  gamma1bar,div_coeff_new, &
-                 unew,w0,normal, &
+                 u_prim,w0,normal, &
                  mla,the_bc_tower)
 
 
        ! perform sanity checks, if desired
        if (mach_max_abort > ZERO) then
-          call sanity_check(time+dt,dx,snew, &
+          call sanity_check(time+dt,dx,s_prim, &
                  D0_new,Dh0_new,p0_new,tempbar, &
                  gamma1bar,div_coeff_new, &
-                 unew,w0,normal, &
+                 u_prim,w0,normal, &
                  mla,the_bc_tower)
        endif
 
     end if
+
+    do n=1,nlevs
+       call destroy(s_prim(n))
+       call destroy(u_prim(n))
+    end do
 
     if (barrier_timers) call parallel_barrier()
     misc_time = misc_time + parallel_wtime() - misc_time_start

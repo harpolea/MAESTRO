@@ -16,7 +16,7 @@ contains
   subroutine enthalpy_advance(mla,which_step,uold,sold,snew,sedge,sflux,scal_force,&
                               thermal,umac,w0,w0mac, &
                               D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
-                              tempbar,psi,dx,dt,the_bc_level,u0_1d,alpha,beta,gam)
+                              tempbar,psi,dx,dt,the_bc_level,u0_1d,alpha,beta,gam,u0)
 
     use bl_prof_module
     use bl_constants_module
@@ -38,7 +38,7 @@ contains
     use pred_parameters
     use modify_scal_force_module
     use convert_rhoX_to_X_module
-    use metric_module, only: cons_to_prim
+    use metric_module, only: cons_to_prim, prim_to_cons
 
     type(ml_layout), intent(inout) :: mla
     integer        , intent(in   ) :: which_step
@@ -66,6 +66,7 @@ contains
     type(multifab), intent(in) :: alpha(:)
     type(multifab), intent(in) :: beta(:)
     type(multifab), intent(in) :: gam(:)
+    type(multifab),  intent(in) :: u0(:)
 
     type(multifab) :: Dh0_old_cart(mla%nlevel)
     type(multifab) :: p0_new_cart(mla%nlevel)
@@ -217,6 +218,8 @@ contains
               (enthalpy_pred_type .eq. predict_Tprime_then_h) ) then
 
        ! make force for temperature
+       ! FIXME: this should take the primitive variables, but as function
+       ! isn't called in my code, not going to bother changing.
        call mktempforce(mla,scal_force,umac,sold,thermal,p0_old,p0_old,psi,dx,the_bc_level)
 
     end if
@@ -512,7 +515,15 @@ contains
                                  .false.,dx,the_bc_level,mla)
     end if
 
-    call update_scal(mla,rhoh_comp,rhoh_comp,sold,snew,sflux,scal_force, &
+    do n=1,nlevs
+       ng_s = nghost(sold(n))
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+    end do
+    call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
+
+    ! FIXME: scalforce in terms of primitive variables???
+    call update_scal(mla,rhoh_comp,rhoh_comp,s_prim,snew,sflux,scal_force, &
                      p0_new,p0_new_cart,dx,dt,the_bc_level)
 
     if (spherical .eq. 1) then
@@ -520,6 +531,13 @@ contains
           call destroy(p0_new_cart(n))
        end do
     end if
+
+    call prim_to_cons(snew, u_prim, u0, snew, u_prim, mla,the_bc_level)
+
+    do n=1, nlevs
+        call destroy(s_prim(n))
+        call destroy(u_prim(n))
+    enddo
 
     if ( verbose .ge. 1 ) then
        do n=1,nlevs

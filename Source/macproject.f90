@@ -446,6 +446,7 @@ contains
          if (before) then
             write(6,1000)
             write(6,1001) rhmax
+            write(6,1003) norm_inf(divu_rhs(1))
          else
             write(6,1002) rhmax
          end if
@@ -454,6 +455,7 @@ contains
 1000  format(' ')
 1001  format('... before mac_projection: max of [div (coeff * UMAC) - RHS)]',e15.8)
 1002  format('...  after mac_projection: max of [div (coeff * UMAC) - RHS)]',e15.8)
+1003  format('...  divu_rhs',e15.8)
 
     end subroutine divumac
 

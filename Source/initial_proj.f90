@@ -22,9 +22,9 @@ module initial_proj_module
 contains
 
   subroutine initial_proj(uold,sold,pi,gpi,Source_old,normal,hgrhs,thermal, &
-                          div_coeff_old,p0,gamma1bar,dx,the_bc_tower,mla)
+                          div_coeff_old,p0,gamma1bar,dx,the_bc_tower,mla,u0)
 
-    use variables, only: foextrap_comp
+    use variables, only: foextrap_comp, rhoh_comp
     use network, only: nspec
     use probin_module, only: use_thermal_diffusion, evolve_base_state
     use geometry, only: spherical, nr_fine, nlevs_radial
@@ -53,6 +53,7 @@ contains
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     type(bc_tower) , intent(in   ) :: the_bc_tower
     type(ml_layout), intent(inout) :: mla
+    type(multifab ), intent(in   ) :: u0(:)
 
     ! local
     integer    :: n,nlevs
@@ -60,7 +61,7 @@ contains
 
     type(multifab) :: delta_gamma1_term(mla%nlevel)
     type(multifab) :: delta_gamma1(mla%nlevel)
-    type(multifab) :: rhohalf(mla%nlevel)
+    type(multifab) :: Dh_half(mla%nlevel)
     type(multifab) :: rho_omegadot1(mla%nlevel)
     type(multifab) :: rho_Hnuc1(mla%nlevel)
     type(multifab) :: rho_Hext(mla%nlevel)
@@ -147,12 +148,13 @@ contains
        call average(mla,Source_old,Sbar,dx,1)
     end if
 
-    ! Note that we use rhohalf, filled with 1 at this point, as a temporary
+    ! Note that we use Dh_half, filled with 1 at this point, as a temporary
     ! in order to do a constant-density initial projection.
 
     do n=1,nlevs
-       call multifab_build(rhohalf(n), mla%la(n), 1, 1)
-       call setval(rhohalf(n),ONE,1,1,all=.true.)
+       call multifab_build(Dh_half(n), mla%la(n), 2, 0)
+       call setval(Dh_half(n),ONE,all=.true.)
+       !call multifab_copy_c(Dh_half(n), rhoh_comp, sold(n), rhoh_comp, 1, nghost(Dh_half(n)))
     end do
 
     call make_hgrhs(the_bc_tower,mla,hgrhs,Source_old,delta_gamma1_term,Sbar, &
@@ -181,12 +183,12 @@ contains
        eps_init = eps_init_proj_cart
     end if
 
-    call hgproject(initial_projection_comp,mla,uold,uold,rhohalf,pi,gpi,dx, &
+    call hgproject(initial_projection_comp,mla,uold,uold,Dh_half,u0,pi,gpi,dx, &
                    dt_temp,the_bc_tower,div_coeff_3d,hgrhs,eps_init)
 
     do n=1,nlevs
        call destroy(div_coeff_3d(n))
-       call destroy(rhohalf(n))
+       call destroy(Dh_half(n))
     end do
 
     do n=1,nlevs

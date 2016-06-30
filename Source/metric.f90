@@ -20,7 +20,7 @@ module metric_module
 
     private :: root_find_on_me, Newton_Raphson
 
-    public :: make_weak_field, inverse_metric, calcW, calcu0, &
+    public :: make_weak_field, inverse_metric, calcW, calcu0, calcu0_1d, &
               g, christoffels, cons_to_prim, prim_to_cons, prim_to_cons_1d
 
 contains
@@ -316,7 +316,7 @@ contains
 
     end subroutine calcu0
 
-    subroutine calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_level)
+    subroutine calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_level, dx)
         ! Calculates timelike coordinate of 3+1 velocity
         ! using Lorentz factor and alpha:
         ! W = alpha * u0
@@ -331,35 +331,36 @@ contains
         real(dp_t)        ,  intent(inout):: u0_1d(:,0:)
         type(ml_layout)   , intent(inout) :: mla
         type(bc_level)    , intent(in   ) :: the_bc_level(:)
+        real(dp_t)    ,  intent(in   ) :: dx(:,:)
 
+        real(kind=dp_t), allocatable :: W_lor(:,:)
         real(kind=dp_t), allocatable :: alpha_1d(:,:)
-        real(kind=dp_t), allocatable :: beta_1d(:,:)
-        real(kind=dp_t), allocatable :: gam_1d(:,:)
-        integer     :: nlevs, n, i, dm
+        real(kind=dp_t), allocatable :: beta_1d(:,:,:)
+        real(kind=dp_t), allocatable :: gam_1d(:,:,:)
+        integer     :: i, dm
 
-        nlevs = mla%nlevel
         dm = mla%dim
 
-        allocate(              alpha_1d(nlevs_radial,0:nr_fine))
-        allocate(              beta_1d(nlevs_radial,0:nr_fine))
-        allocate(              gam_1d(nlevs_radial,0:nr_fine))
+        allocate(              W_lor(nlevs_radial,0:nr_fine-1))
+        allocate(              alpha_1d(nlevs_radial,0:nr_fine-1))
+        allocate(              beta_1d(nlevs_radial,0:nr_fine-1,dm))
+        allocate(              gam_1d(nlevs_radial,0:nr_fine-1,dm))
 
-        do n = 1, nlevs
-            do i = 1, nfabs(alpha(n))
-                !alphap => dataptr(alpha(n),i)
-                !betap => dataptr(beta(n),i)
-                !gamp => dataptr(gam(n),i)
+        call average(mla, alpha, alpha_1d, dx, 1)
 
-                !u0p(:,:,:,1) = Wp(:,:,:,1) / alphap(:,:,:,1)
-            enddo
+        !print *, 'alpha_1d', alpha_1d
+
+        do i = 1, dm
+            call average(mla, beta, beta_1d(:,:,i), dx, i)
+            call average(mla, gam, gam_1d(:,:,i), dx, i)
         enddo
 
-        ! fill ghosts
-        !call ml_restrict_and_fill(nlevs,u0,mla%mba%rr,the_bc_level, &
-        !                          icomp=1, &
-        !                          bcomp=1, &
-        !                          nc=1, &
-        !                          ng=u0(1)%ng)
+        W_lor(:,:) = gam_1d(:,:,3) * (w0(:,:nr_fine-1) + beta_1d(:,:,3))**2 / &
+                     alpha_1d(:,:)**2
+
+        W_lor(:,:) = ONE / sqrt(ONE - W_lor(:,:)/c**2)
+
+        u0_1d(:,:) = W_lor(:,:) / alpha_1d(:,:)
 
     end subroutine calcu0_1d
 
@@ -694,11 +695,11 @@ contains
          endif
       enddo
       fail = .false.
-      if (error > TOLERANCE) then       ! Check if solution converged
-         write(*,*) 'solution did not converge, xn, NonLinearEquation(xn),D(xn)'
-         write(*,*) xn, f, error
-         fail = .true.
-      endif
+      !if (error > TOLERANCE) then       ! Check if solution converged
+        ! write(*,*) 'solution did not converge, xn, NonLinearEquation(xn),D(xn)'
+         !write(*,*) xn, f, error
+         !fail = .true.
+      !endif
 
     end subroutine Newton_Raphson
 

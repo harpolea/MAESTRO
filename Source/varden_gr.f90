@@ -435,7 +435,7 @@ subroutine varden()
 
      if(do_initial_projection) then
         call initial_proj(uold,sold,pi,gpi,Source_old,normal,hgrhs,thermal2, &
-                          div_coeff_old,p0_old,gamma1bar,dx,the_bc_tower,mla)
+                          div_coeff_old,p0_old,gamma1bar,dx,the_bc_tower,mla,u0)
      end if
 
      !----------------------------------------------------------------------

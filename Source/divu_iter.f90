@@ -23,7 +23,7 @@ contains
                        Source_old,normal,hgrhs,dSdt,div_coeff_old,D0_old,Dh0_old,p0_old,gamma1bar, &
                        tempbar_init,w0,dpdr_cell,dx,dt,the_bc_tower,mla,chrls,u0,gam,alpha,beta,u0_1d)
 
-    use variables, only: nscal, foextrap_comp
+    use variables, only: nscal, foextrap_comp, rhoh_comp
     use network, only: nspec
     use probin_module, only: use_thermal_diffusion, evolve_base_state, &
          init_divu_iter, cflfac, verbose, init_shrink, fixed_dt
@@ -79,7 +79,7 @@ contains
     type(multifab) :: s1(mla%nlevel)
     type(multifab) :: delta_gamma1_term(mla%nlevel)
     type(multifab) :: delta_gamma1(mla%nlevel)
-    type(multifab) :: rhohalf(mla%nlevel)
+    type(multifab) :: Dh_half(mla%nlevel)
     type(multifab) :: rho_omegadot(mla%nlevel)
     type(multifab) :: rho_Hnuc(mla%nlevel)
     type(multifab) :: rho_Hext(mla%nlevel)
@@ -191,9 +191,11 @@ contains
     dt_temp = ONE
 
     do n=1,nlevs
-       call multifab_build(rhohalf(n), mla%la(n), 1, 1)
-       call setval(rhohalf(n),ONE,1,1,all=.true.)
+       call multifab_build(Dh_half(n), mla%la(n), 2, 0)
+       call setval(Dh_half(n),ONE,all=.true.)
+       !call multifab_copy_c(Dh_half(n), rhoh_comp, sold(n), rhoh_comp, 1, nghost(Dh_half(n)))
     end do
+
 
     if (spherical .eq. 1) then
        if (istep_divu_iter .eq. init_divu_iter) then
@@ -229,12 +231,12 @@ contains
                               .false.,dx,the_bc_tower%bc_tower_array,mla)
 
 
-    call hgproject(divu_iters_comp,mla,uold,uold,rhohalf,pi,gpi,dx,dt_temp, &
+    call hgproject(divu_iters_comp,mla,uold,uold,Dh_half,u0,pi,gpi,dx,dt_temp, &
                    the_bc_tower,div_coeff_3d,hgrhs,eps_divu)
 
     do n=1,nlevs
        call destroy(div_coeff_3d(n))
-       call destroy(rhohalf(n))
+       call destroy(Dh_half(n))
     end do
 
     do n = 1,nlevs

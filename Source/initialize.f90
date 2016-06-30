@@ -373,6 +373,7 @@ contains
           call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
           ! call eos with r,p as input to recompute T,h
+          ! FIXME: call using primitives
           call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
           ! set rhoh0 to be the average
@@ -651,6 +652,7 @@ contains
        call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
        ! compute temperature with EOS
+       ! FIXME: these need to be called using primitive variables.
        if (use_tfromp) then
           ! compute full state T = T(rho,p0,X)
           call makeTfromRhoP(sold,p0_old,mla,the_bc_tower%bc_tower_array,dx)
@@ -935,6 +937,7 @@ contains
        call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
        ! call eos with r,p as input to recompute T,h
+       ! FIXME: call using primitives
        call makeTHfromRhoP(sold,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
        ! set rhoh0 to be the average

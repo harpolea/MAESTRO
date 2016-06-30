@@ -215,7 +215,8 @@ contains
                    endif
                    ! FIXME: hack to get this to work:
                    if (abs(integral) .gt. 1.d0) then
-                       integral = integral / c
+                       !integral = integral / c
+                       integral = 0.d0
                    endif
 
                    beta0_edge(n,r+1) = beta0_edge(n,r) * exp(integral)
@@ -322,7 +323,10 @@ contains
 
     end if
 
-    !print *, 'div_coeff', div_coeff
+    print *, 'div_coeff', div_coeff
+
+    ! FIXME: hack
+    div_coeff(:,:) = div_coeff(:,:) / c
 
     call restrict_base(div_coeff,.true.)
     call fill_ghost_base(div_coeff,.true.)

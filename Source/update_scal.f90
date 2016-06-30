@@ -153,50 +153,50 @@ contains
     logical            :: has_negative_species
 
     integer :: pt_index(MAX_SPACEDIM)
-    
+
     type(eos_t) :: eos_state
 
     do comp = nstart, nstop
 
        do i=lo(1),hi(1)
-             
+
           divterm = (sfluxx(i+1,comp) - sfluxx(i,comp))/dx(1)
 
           snew(i,comp) = sold(i,comp) + dt*(-divterm + force(i,comp))
-          
+
        end do
 
     enddo
 
     if ( do_eos_h_above_cutoff .and. (nstart .eq. rhoh_comp) ) then
-       
+
        do i = lo(1), hi(1)
-             
+
           if (snew(i,rho_comp) .le. base_cutoff_density) then
 
              eos_state%rho = snew(i,rho_comp)
              eos_state%T   = sold(i,temp_comp)
              eos_state%p   = p0_new(i)
              eos_state%xn  =snew(i,spec_comp:spec_comp+nspec-1)/eos_state%rho
-             
+
              pt_index(:) = (/i, -1, -1/)
-             
+
              ! (rho,P) --> T,h
              call eos(eos_input_rp, eos_state, pt_index)
-             
+
              snew(i,rhoh_comp) = snew(i,rho_comp) * eos_state%h
-             
+
           end if
-          
+
        enddo
-       
+
     end if
-    
+
     ! update density
     if (nstart .eq. spec_comp .and. nstop .eq. (spec_comp+nspec-1)) then
-       
+
        snew(:,rho_comp) = sold(:,rho_comp)
-       
+
        do i = lo(1), hi(1)
 
           has_negative_species = .false.
@@ -220,7 +220,7 @@ contains
              do comp = nstart, nstop
                 if (snew(i,comp) .lt. ZERO) then
                    delta = -snew(i,comp)
-                   sumX = ZERO 
+                   sumX = ZERO
                    do comp2 = nstart, nstop
                       if (comp2 .ne. comp .and. snew(i,comp2) .ge. ZERO) then
                          sumX = sumX + snew(i,comp2)
@@ -238,7 +238,7 @@ contains
           end if
 
        enddo
-       
+
     end if
 
   end subroutine update_scal_1d
@@ -277,22 +277,22 @@ contains
 
        do j=lo(2),hi(2)
           do i=lo(1),hi(1)
-             
+
              divterm = (sfluxx(i+1,j,comp) - sfluxx(i,j,comp))/dx(1) &
                      + (sfluxy(i,j+1,comp) - sfluxy(i,j,comp))/dx(2)
 
              snew(i,j,comp) = sold(i,j,comp) + dt*(-divterm + force(i,j,comp))
-             
+
           end do
        end do
 
     enddo
 
     if ( do_eos_h_above_cutoff .and. (nstart .eq. rhoh_comp) ) then
-       
+
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
-             
+
              if (snew(i,j,rho_comp) .le. base_cutoff_density) then
                 eos_state%rho = snew(i,j,rho_comp)
                 eos_state%T   = sold(i,j,temp_comp)
@@ -300,30 +300,30 @@ contains
                 eos_state%xn  = snew(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
                 pt_index(:) = (/i, j, -1/)
-                
+
                 ! (rho,P) --> T,h
                 call eos(eos_input_rp, eos_state, pt_index)
-                
+
                 snew(i,j,rhoh_comp) = snew(i,j,rho_comp) * eos_state%h
-                
+
              end if
-             
+
           enddo
        enddo
-       
+
     end if
-    
+
     ! update density
     if (nstart .eq. spec_comp .and. nstop .eq. (spec_comp+nspec-1)) then
-       
+
        snew(:,:,rho_comp) = sold(:,:,rho_comp)
-           
+
        do j = lo(2), hi(2)
           do i = lo(1), hi(1)
 
              has_negative_species = .false.
 
-             ! define the update to rho as the sum of the updates to (rho X)_i  
+             ! define the update to rho as the sum of the updates to (rho X)_i
              do comp = nstart, nstop
                 snew(i,j,rho_comp) = snew(i,j,rho_comp) + (snew(i,j,comp)-sold(i,j,comp))
                 if (snew(i,j,comp) .lt. ZERO) has_negative_species = .true.
@@ -343,7 +343,7 @@ contains
                 do comp = nstart, nstop
                    if (snew(i,j,comp) .lt. ZERO) then
                       delta = -snew(i,j,comp)
-                      sumX = ZERO 
+                      sumX = ZERO
                       do comp2 = nstart, nstop
                          if (comp2 .ne. comp .and. snew(i,j,comp2) .ge. ZERO) then
                             sumX = sumX + snew(i,j,comp2)
@@ -398,26 +398,26 @@ contains
 
     type(eos_t) :: eos_state
 
-    !$OMP PARALLEL PRIVATE(i,j,k,divterm,comp) 
+    !$OMP PARALLEL PRIVATE(i,j,k,divterm,comp)
     do comp = nstart, nstop
        !$OMP DO
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
-                
+
                 divterm = (sfluxx(i+1,j,k,comp) - sfluxx(i,j,k,comp))/dx(1) &
                         + (sfluxy(i,j+1,k,comp) - sfluxy(i,j,k,comp))/dx(2) &
                         + (sfluxz(i,j,k+1,comp) - sfluxz(i,j,k,comp))/dx(3)
-   
+
                 snew(i,j,k,comp) = sold(i,j,k,comp) + dt * (-divterm + force(i,j,k,comp))
-                
+
              enddo
           enddo
        enddo
        !$OMP END DO NOWAIT
     end do
     !$OMP END PARALLEL
-    
+
     if ( do_eos_h_above_cutoff .and. (nstart .eq. rhoh_comp) ) then
 
        !$OMP PARALLEL DO PRIVATE(i,j,k,eos_state,pt_index)
@@ -454,7 +454,7 @@ contains
 
        snew(:,:,:,rho_comp) = sold(:,:,:,rho_comp)
 
-       !$OMP PARALLEL DO PRIVATE(i,j,k,has_negative_species,comp,delta,sumX,comp2,frac)       
+       !$OMP PARALLEL DO PRIVATE(i,j,k,has_negative_species,comp,delta,sumX,comp2,frac)
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
@@ -482,7 +482,7 @@ contains
                    do comp = nstart, nstop
                       if (snew(i,j,k,comp) .lt. ZERO) then
                          delta = -snew(i,j,k,comp)
-                         sumX = ZERO 
+                         sumX = ZERO
                          do comp2 = nstart, nstop
                             if (comp2 .ne. comp .and. snew(i,j,k,comp2) .ge. ZERO) then
                                sumX = sumX + snew(i,j,k,comp2)
@@ -541,7 +541,7 @@ contains
     !
     ! is spherical
     !
-    !$OMP PARALLEL PRIVATE(i,j,k,divterm,comp) 
+    !$OMP PARALLEL PRIVATE(i,j,k,divterm,comp)
     do comp = nstart, nstop
        !$OMP DO
        do k = lo(3), hi(3)
@@ -564,7 +564,7 @@ contains
     if ( do_eos_h_above_cutoff .and. (nstart .eq. rhoh_comp) ) then
 
        !$OMP PARALLEL DO PRIVATE(i,j,k,eos_state,pt_index)
-       do k = lo(3), hi(3) 
+       do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
 
@@ -623,7 +623,7 @@ contains
                    do comp = nstart, nstop
                       if (snew(i,j,k,comp) .lt. ZERO) then
                          delta = -snew(i,j,k,comp)
-                         sumX = ZERO 
+                         sumX = ZERO
                          do comp2 = nstart, nstop
                             if (comp2 .ne. comp .and. snew(i,j,k,comp2) .ge. ZERO) then
                                sumX = sumX + snew(i,j,k,comp2)

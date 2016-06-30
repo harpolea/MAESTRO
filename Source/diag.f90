@@ -1,4 +1,4 @@
-! a generic diag module for MAESTRO.  This simply computes the 
+! a generic diag module for MAESTRO.  This simply computes the
 ! maximum Mach number on the domain and outputs it each timestep
 ! to maestro_diag.out
 
@@ -25,7 +25,7 @@ contains
 
   !xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   subroutine diag(newtime,dt,dx,s,rho_Hnuc,rho_Hext,thermal,rho_omegadot, &
-                  rho0,rhoh0,p0,tempbar, &
+                  D0,Dh0,p0,tempbar, &
                   gamma1bar,div_coeff, &
                   u,w0,normal, &
                   mla,the_bc_tower)
@@ -48,8 +48,8 @@ contains
     type(multifab) , intent(in   ) :: rho_omegadot(:)
     type(multifab) , intent(in   ) :: u(:)
     type(multifab) , intent(in   ) :: normal(:)
-    real(kind=dp_t), intent(in   ) ::      rho0(:,0:)
-    real(kind=dp_t), intent(in   ) ::     rhoh0(:,0:)
+    real(kind=dp_t), intent(in   ) ::      D0(:,0:)
+    real(kind=dp_t), intent(in   ) ::     Dh0(:,0:)
     real(kind=dp_t), intent(in   ) ::        p0(:,0:)
     real(kind=dp_t), intent(in   ) ::   tempbar(:,0:)
     real(kind=dp_t), intent(in   ) :: gamma1bar(:,0:)
@@ -97,7 +97,7 @@ contains
     if (spherical .eq. 1) then
 
        do n=1,nlevs
-          
+
           do comp=1,dm
              ! w0mac will contain an edge-centered w0 on a Cartesian
              ! grid, for use in computing divergences.
@@ -162,7 +162,7 @@ contains
        Hext_max_level = ZERO
        Hext_max_local = ZERO
 
-       
+
 
        !----------------------------------------------------------------------
        ! loop over boxes in a given level
@@ -187,7 +187,7 @@ contains
                              rhnp(:,1,1,1),ng_rhn, &
                              rhep(:,1,1,1),ng_rhe, &
                              rwp(:,1,1,:),ng_rw, &
-                             rho0(n,:),rhoh0(n,:), &
+                             D0(n,:),Dh0(n,:), &
                              p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                              up(:,1,1,:),ng_u, &
                              w0(n,:), &
@@ -201,7 +201,7 @@ contains
                              rhnp(:,1,1,1),ng_rhn, &
                              rhep(:,1,1,1),ng_rhe, &
                              rwp(:,1,1,:),ng_rw, &
-                             rho0(n,:),rhoh0(n,:), &
+                             D0(n,:),Dh0(n,:), &
                              p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                              up(:,1,1,:),ng_u, &
                              w0(n,:), &
@@ -218,7 +218,7 @@ contains
                              rhnp(:,:,1,1),ng_rhn, &
                              rhep(:,:,1,1),ng_rhe, &
                              rwp(:,:,1,:),ng_rw, &
-                             rho0(n,:),rhoh0(n,:), &
+                             D0(n,:),Dh0(n,:), &
                              p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                              up(:,:,1,:),ng_u, &
                              w0(n,:), &
@@ -232,7 +232,7 @@ contains
                              rhnp(:,:,1,1),ng_rhn, &
                              rhep(:,:,1,1),ng_rhe, &
                              rwp(:,:,1,:),ng_rw, &
-                             rho0(n,:),rhoh0(n,:), &
+                             D0(n,:),Dh0(n,:), &
                              p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                              up(:,:,1,:),ng_u, &
                              w0(n,:), &
@@ -257,7 +257,7 @@ contains
                                     rhnp(:,:,:,1),ng_rhn, &
                                     rhep(:,:,:,1),ng_rhe, &
                                     rwp(:,:,:,:),ng_rw, &
-                                    rho0(n,:),rhoh0(n,:), &
+                                    D0(n,:),Dh0(n,:), &
                                     p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                                     up(:,:,:,:),ng_u, &
                                     w0rp(:,:,:,1), ng_w, &
@@ -273,7 +273,7 @@ contains
                                     rhnp(:,:,:,1),ng_rhn, &
                                     rhep(:,:,:,1),ng_rhe, &
                                     rwp(:,:,:,:),ng_rw, &
-                                    rho0(n,:),rhoh0(n,:), &
+                                    D0(n,:),Dh0(n,:), &
                                     p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                                     up(:,:,:,:),ng_u, &
                                     w0rp(:,:,:,1), ng_w, &
@@ -292,7 +292,7 @@ contains
                                 rhnp(:,:,:,1),ng_rhn, &
                                 rhep(:,:,:,1),ng_rhe, &
                                 rwp(:,:,:,:),ng_rw, &
-                                rho0(n,:),rhoh0(n,:), &
+                                D0(n,:),Dh0(n,:), &
                                 p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                                 up(:,:,:,:),ng_u, &
                                 w0(n,:), &
@@ -306,7 +306,7 @@ contains
                                 rhnp(:,:,:,1),ng_rhn, &
                                 rhep(:,:,:,1),ng_rhe, &
                                 rwp(:,:,:,:),ng_rw, &
-                                rho0(n,:),rhoh0(n,:), &
+                                D0(n,:),Dh0(n,:), &
                                 p0(n,:),tempbar(n,:),gamma1bar(n,:), &
                                 up(:,:,:,:),ng_u, &
                                 w0(n,:), &
@@ -352,7 +352,7 @@ contains
 
 
     !=========================================================================
-    ! normalize 
+    ! normalize
     !=========================================================================
 
     ! normalize any integral quantities here
@@ -396,7 +396,7 @@ contains
        close(un)
 
     endif
-    
+
     !=========================================================================
     ! clean-up
     !=========================================================================
@@ -418,7 +418,7 @@ contains
   subroutine flush_diag()
     ! flush_diag is called immediately before checkpointing.  If an
     ! implementation of these diagnostic routines wants to buffer the
-    ! data a write out a lot of timestep's worth of information all 
+    ! data a write out a lot of timestep's worth of information all
     ! at once, flush_diag() is the routine that should do the writing.
 
   end subroutine flush_diag
@@ -430,7 +430,7 @@ contains
                      rho_Hnuc,ng_rhn, &
                      rho_Hext,ng_rhe, &
                      rho_omegadot,ng_rw, &
-                     rho0,rhoh0,p0,tempbar,gamma1bar, &
+                     D0,Dh0,p0,tempbar,gamma1bar, &
                      u,ng_u, &
                      w0, &
                      lo,hi, &
@@ -450,7 +450,7 @@ contains
     real (kind=dp_t), intent(in   ) ::  rho_Hnuc(lo(1)-ng_rhn:)
     real (kind=dp_t), intent(in   ) ::  rho_Hext(lo(1)-ng_rhe:)
     real (kind=dp_t), intent(in   ) :: rho_omegadot(lo(1)-ng_rw:,:)
-    real (kind=dp_t), intent(in   ) :: rho0(0:), rhoh0(0:), &
+    real (kind=dp_t), intent(in   ) :: D0(0:), Dh0(0:), &
                                          p0(0:),tempbar(0:),gamma1bar(0:)
     real (kind=dp_t), intent(in   ) ::      u(lo(1)-ng_u:,:)
     real (kind=dp_t), intent(in   ) :: w0(0:)
@@ -479,14 +479,14 @@ contains
        if (present(mask)) then
           if ( (.not. mask(i)) ) cell_valid = .false.
        endif
-       
+
        if (cell_valid) then
 
           ! vel is the magnitude of the velocity, including w0
           vel = sqrt( (u(i,1) + HALF*(w0(i) + w0(i+1)) )**2 )
 
-             
-          ! call the EOS to get the sound speed and internal energy       
+
+          ! call the EOS to get the sound speed and internal energy
           eos_state%T     = s(i,temp_comp)
           eos_state%rho   = s(i,rho_comp)
           eos_state%xn(:) = s(i,spec_comp:spec_comp+nspec-1)/eos_state%rho
@@ -494,7 +494,7 @@ contains
           call eos(eos_input_rt, eos_state)
 
 
-          ! max Mach number                                       
+          ! max Mach number
           Mach_max = max(Mach_max,vel/eos_state%cs)
 
 
@@ -516,7 +516,7 @@ contains
                      rho_Hnuc,ng_rhn, &
                      rho_Hext,ng_rhe, &
                      rho_omegadot,ng_rw, &
-                     rho0,rhoh0,p0,tempbar,gamma1bar, &
+                     D0,Dh0,p0,tempbar,gamma1bar, &
                      u,ng_u, &
                      w0, &
                      lo,hi, &
@@ -536,7 +536,7 @@ contains
     real (kind=dp_t), intent(in   ) :: rho_Hnuc(lo(1)-ng_rhn:,lo(2)-ng_rhn:)
     real (kind=dp_t), intent(in   ) :: rho_Hext(lo(1)-ng_rhe:,lo(2)-ng_rhe:)
     real (kind=dp_t), intent(in   ) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,:)
-    real (kind=dp_t), intent(in   ) :: rho0(0:), rhoh0(0:), &
+    real (kind=dp_t), intent(in   ) :: D0(0:), Dh0(0:), &
                                          p0(0:),tempbar(0:),gamma1bar(0:)
     real (kind=dp_t), intent(in   ) ::      u(lo(1)-ng_u:,lo(2)-ng_u:,:)
     real (kind=dp_t), intent(in   ) :: w0(0:)
@@ -560,7 +560,7 @@ contains
 
     do j = lo(2), hi(2)
        y = prob_lo(2) + (dble(j) + HALF) * dx(2)
-       
+
        do i = lo(1), hi(1)
           x = prob_lo(1) + (dble(i) + HALF) * dx(1)
 
@@ -575,15 +575,15 @@ contains
              vel = sqrt(  u(i,j,1)**2 + &
                         ( u(i,j,2) + HALF*(w0(j) + w0(j+1)) )**2 )
 
-             
-             ! call the EOS to get the sound speed and internal energy       
+
+             ! call the EOS to get the sound speed and internal energy
              eos_state%T     = s(i,j,temp_comp)
              eos_state%rho   = s(i,j,rho_comp)
              eos_state%xn(:) = s(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
              call eos(eos_input_rt, eos_state)
 
-             ! max Mach number                                       
+             ! max Mach number
              Mach_max = max(Mach_max,vel/eos_state%cs)
 
              ! max temp and enuc
@@ -605,7 +605,7 @@ contains
                      rho_Hnuc,ng_rhn, &
                      rho_Hext,ng_rhe, &
                      rho_omegadot,ng_rw, &
-                     rho0,rhoh0,p0,tempbar,gamma1bar, &
+                     D0,Dh0,p0,tempbar,gamma1bar, &
                      u,ng_u, &
                      w0, &
                      lo,hi, &
@@ -624,7 +624,7 @@ contains
     real (kind=dp_t), intent(in   ) :: rho_Hnuc(lo(1)-ng_rhn:,lo(2)-ng_rhn:,lo(3)-ng_rhn:)
     real (kind=dp_t), intent(in   ) :: rho_Hext(lo(1)-ng_rhe:,lo(2)-ng_rhe:,lo(3)-ng_rhe:)
     real (kind=dp_t), intent(in   ) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
-    real (kind=dp_t), intent(in   ) :: rho0(0:), rhoh0(0:), &
+    real (kind=dp_t), intent(in   ) :: D0(0:), Dh0(0:), &
                                          p0(0:),tempbar(0:),gamma1bar(0:)
     real (kind=dp_t), intent(in   ) ::      u(lo(1)-ng_u:,lo(2)-ng_u:,lo(3)-ng_u:,:)
     real (kind=dp_t), intent(in   ) :: w0(0:)
@@ -651,7 +651,7 @@ contains
 
        do j = lo(2), hi(2)
           y = prob_lo(2) + (dble(j) + HALF) * dx(2)
-       
+
           do i = lo(1), hi(1)
              x = prob_lo(1) + (dble(i) + HALF) * dx(1)
 
@@ -667,15 +667,15 @@ contains
                              u(i,j,k,2)**2 + &
                            ( u(i,j,k,3) + HALF*(w0(k) + w0(k+1)) )**2 )
 
-             
-                ! call the EOS to get the sound speed and internal energy       
+
+                ! call the EOS to get the sound speed and internal energy
                 eos_state%T     = s(i,j,k,temp_comp)
                 eos_state%rho   = s(i,j,k,rho_comp)
                 eos_state%xn(:) = s(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
                 call eos(eos_input_rt, eos_state)
 
-                ! max Mach number                                       
+                ! max Mach number
                 Mach_max = max(Mach_max,vel/eos_state%cs)
 
                 ! max temp and enuc
@@ -698,12 +698,12 @@ contains
                          rho_Hnuc,ng_rhn, &
                          rho_Hext,ng_rhe, &
                          rho_omegadot,ng_rw, &
-                         rho0,rhoh0,p0,tempbar,gamma1bar, &
+                         D0,Dh0,p0,tempbar,gamma1bar, &
                          u,ng_u, &
                          w0r,ng_w, &
                          w0macx,w0macy,w0macz,ng_wm, &
                          normal,ng_n, &
-                         lo,hi, &                         
+                         lo,hi, &
                          Mach_max,temp_max, &
                          enuc_max,Hext_max, &
                          mask)
@@ -720,7 +720,7 @@ contains
     real (kind=dp_t), intent(in   ) :: rho_Hnuc(lo(1)-ng_rhn:,lo(2)-ng_rhn:,lo(3)-ng_rhn:)
     real (kind=dp_t), intent(in   ) :: rho_Hext(lo(1)-ng_rhe:,lo(2)-ng_rhe:,lo(3)-ng_rhe:)
     real (kind=dp_t), intent(in   ) :: rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
-    real (kind=dp_t), intent(in   ) :: rho0(0:), rhoh0(0:), &
+    real (kind=dp_t), intent(in   ) :: D0(0:), Dh0(0:), &
                                          p0(0:),tempbar(0:),gamma1bar(0:)
     real (kind=dp_t), intent(in   ) ::      u(lo(1)-ng_u:,lo(2)-ng_u:,lo(3)-ng_u:,:)
     real (kind=dp_t), intent(in   ) ::      w0r(lo(1)-ng_w:  ,lo(2)-ng_w:  ,lo(3)-ng_w:)
@@ -751,7 +751,7 @@ contains
 
        do j = lo(2), hi(2)
           y = prob_lo(2) + (dble(j) + HALF) * dx(2)
-       
+
           do i = lo(1), hi(1)
              x = prob_lo(1) + (dble(i) + HALF) * dx(1)
 
@@ -767,15 +767,15 @@ contains
                             (u(i,j,k,2)+HALF*(w0macy(i,j,k)+w0macy(i,j+1,k)))**2 + &
                             (u(i,j,k,3)+HALF*(w0macz(i,j,k)+w0macz(i,j,k+1)))**2)
 
-             
-                ! call the EOS to get the sound speed and internal energy       
+
+                ! call the EOS to get the sound speed and internal energy
                 eos_state%T     = s(i,j,k,temp_comp)
                 eos_state%rho   = s(i,j,k,rho_comp)
                 eos_state%xn(:) = s(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
                 call eos(eos_input_rt, eos_state)
 
-                ! max Mach number                                       
+                ! max Mach number
                 Mach_max = max(Mach_max,vel/eos_state%cs)
 
                 ! max temp and enuc
@@ -793,5 +793,5 @@ contains
 
   subroutine diag_finalize()
   end subroutine diag_finalize
-  
+
 end module diag_module

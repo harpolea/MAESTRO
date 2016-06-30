@@ -2,6 +2,8 @@
 ! is called on a zone-by-zone basis from init_scalar_data.  It is
 ! assumed that the perturbation is done at constant pressure.
 
+! FIXME: need to call this using primitive variables if used in code
+
 module init_perturb_module
 
   use variables

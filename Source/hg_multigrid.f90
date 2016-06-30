@@ -13,9 +13,9 @@ module hg_multigrid_module
 
   public :: hg_multigrid
 
-contains 
+contains
 
-  subroutine hg_multigrid(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
+  subroutine hg_multigrid(mla,rh,unew,Dh_half,div_coeff_3d,phi,dx,the_bc_tower, &
                           stencil_type,rel_solver_eps,abs_solver_eps, divu_rhs)
 
     use bl_prof_module
@@ -27,13 +27,13 @@ contains
                                      mg_verbose, cg_verbose, nodal, mg_bottom_nu, &
                                      hg_cycle_type
 
-    use variables, only: press_comp
+    use variables, only: press_comp, rhoh_comp
     use mg_eps_module, only: eps_hg_bottom
 
     type(ml_layout), intent(in   ) :: mla
     type(multifab ), intent(inout) :: rh(:)
     type(multifab ), intent(inout) :: unew(:)
-    type(multifab ), intent(in   ) :: rhohalf(:)
+    type(multifab ), intent(in   ) :: Dh_half(:)
     type(multifab ), intent(in   ) :: div_coeff_3d(:)
     type(multifab ), intent(inout) :: phi(:)
     real(dp_t)     , intent(in)    :: dx(:,:)
@@ -118,7 +118,7 @@ contains
              max_nlevel_in = 1
           else if ( all(mla%mba%rr(n-1,:) == 4) ) then
              max_nlevel_in = 2
-          else 
+          else
              call bl_error("HG_MULTIGRID: confused about ref_ratio")
           end if
        end if
@@ -152,7 +152,7 @@ contains
                            verbose = mg_verbose, &
                            cg_verbose = cg_verbose, &
                            nodal = nodal)
-       
+
     end do
 
     !! Fill coefficient array
@@ -169,10 +169,10 @@ contains
        ! Build coeffs(i,j,1) = (rho/beta0)
        ! (and) coeffs(i,j,2) =   1./beta0 if coeff_ncomp > 1
        !
-       ! Note: either rhohalf = rho/beta_0 or rho/beta_0^2
+       ! Note: either Dh_half = rho/beta_0 or rho/beta_0^2
        ! (depending on use_alt_energy_fix).
 
-       call multifab_div_div_c(coeffs(mgt(n)%nlevels),1,rhohalf(n),1,1,0)
+       call multifab_div_div_c(coeffs(mgt(n)%nlevels),1,Dh_half(n),rhoh_comp,1,0)
        if (ncomp(coeffs(mgt(n)%nlevels)) .gt. 1) &
           call multifab_div_div_c(coeffs(mgt(n)%nlevels),2,div_coeff_3d(n),1,1,0)
 
@@ -186,14 +186,14 @@ contains
     end do
 
     ! ********************************************************************************
-    ! Take the divergence of U:  RHS = div(U) 
+    ! Take the divergence of U:  RHS = div(U)
     ! ********************************************************************************
 
     ! Set the inflow array -- 1 if inflow, otherwise 0
     allocate(lo_inflow(dm),hi_inflow(dm))
     lo_inflow(:) = 0
     hi_inflow(:) = 0
-    do d = 1,dm 
+    do d = 1,dm
        if (the_bc_tower%bc_tower_array(1)%phys_bc_level_array(0,d,1) == INLET) then
           lo_inflow(d) = 1
        end if

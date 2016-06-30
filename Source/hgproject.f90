@@ -21,6 +21,7 @@ module hgproject_module
   use multifab_module
   use ml_layout_module
   use define_bc_module
+  use variables, only: rhoh_comp
 
   implicit none
 
@@ -29,7 +30,7 @@ module hgproject_module
 
 contains
 
-  subroutine hgproject(proj_type,mla,unew,uold,rhohalf,pi,gpi,dx,dt,the_bc_tower, &
+  subroutine hgproject(proj_type,mla,unew,uold,Dhu0,u0,pi,gpi,dx,dt,the_bc_tower, &
                        div_coeff_3d,divu_rhs,eps_in)
 
     use bc_module
@@ -48,7 +49,8 @@ contains
     type(ml_layout), intent(in   ) :: mla
     type(multifab ), intent(inout) :: unew(:)
     type(multifab ), intent(in   ) :: uold(:)
-    type(multifab ), intent(inout) :: rhohalf(:)
+    type(multifab ), intent(inout) :: Dhu0(:)
+    type(multifab ), intent(in   ) :: u0(:)
     type(multifab ), intent(inout) :: pi(:)
     type(multifab ), intent(inout) :: gpi(:)
     real(dp_t)     , intent(in   ) :: dx(:,:),dt
@@ -126,7 +128,8 @@ contains
 1003 format('... z-velocity before projection ',e17.10,2x,e17.10)
 1004 format(' ')
 
-    call create_uvec_for_projection(unew,uold,rhohalf,gpi,dt,the_bc_tower,proj_type)
+
+    call create_uvec_for_projection(unew,uold,Dhu0,gpi,dt,the_bc_tower,proj_type)
 
     if (proj_type .ne. initial_projection_comp .and. &
         proj_type .ne. divu_iters_comp .and. &
@@ -140,37 +143,41 @@ contains
 
     end if
 
+
     do n=1,nlevs
        do d=1,dm
           call multifab_mult_mult_c(unew(n),d,div_coeff_3d(n),1,1,nghost(div_coeff_3d(n)))
        end do
 
        !!!!!!!! FIXME: GET RID OF ME
-       do d = 1, nfabs(div_coeff_3d(n))
-           testp => dataptr(div_coeff_3d(n), d)
+       !do d = 1, nfabs(div_coeff_3d(n))
+        !   testp => dataptr(div_coeff_3d(n), d)
            !print *, testp
-       enddo
+       !enddo
 
-       ! rhohalf = rho/beta_0
-       call multifab_div_div_c(rhohalf(n),1,div_coeff_3d(n),1,1, &
-                               nghost(div_coeff_3d(n)))
+       ! Dhu0 = Dh u0 /beta_0
 
-       ! rhohalf = rho/beta_0^2
+
+       call multifab_div_div_c(Dhu0(n),rhoh_comp,div_coeff_3d(n),1,1, &
+                               nghost(Dhu0(n)))
+
+       ! Dhu0 = rho/beta_0^2
        if (using_alt_energy_fix) then
-          call multifab_div_div_c(rhohalf(n),1,div_coeff_3d(n),1,1, &
-                                  nghost(div_coeff_3d(n)))
+          call multifab_div_div_c(Dhu0(n),rhoh_comp,div_coeff_3d(n),1,1, &
+                                  nghost(Dhu0(n)))
        endif
     end do
 
+
     do n = 1, nlevs
-       call multifab_build(phi(n), mla%la(n), 1, 1, nodal)
-       call multifab_build( rh(n), mla%la(n), 1, 1, nodal)
-       call setval(phi(n),ZERO,all=.true.)
-       call setval( rh(n),ZERO,all=.true.)
+       call multifab_build( phi(n), mla%la(n), 1, 1, nodal)
+       call multifab_build(  rh(n), mla%la(n), 1, 1, nodal)
+       call setval( phi(n),ZERO,all=.true.)
+       call setval(  rh(n),ZERO,all=.true.)
     end do
 
 !   if (dm .eq. 1) then
-!      call hg_1d_solver(mla,unew,rhohalf,phi,dx,the_bc_tower,stencil_type,divu_rhs)
+!      call hg_1d_solver(mla,unew,Dhu0,phi,dx,the_bc_tower,stencil_type,divu_rhs)
 !   else
 
     if (present(eps_in)) then
@@ -183,18 +190,18 @@ contains
 
     if (use_hypre) then
        if (present(divu_rhs)) then
-          call hg_hypre(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
+          call hg_hypre(mla,rh,unew,Dhu0,div_coeff_3d,phi,dx,the_bc_tower, &
                         stencil_type,rel_solver_eps,abs_solver_eps, divu_rhs)
        else
-          call hg_hypre(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
+          call hg_hypre(mla,rh,unew,Dhu0,div_coeff_3d,phi,dx,the_bc_tower, &
                         stencil_type,rel_solver_eps,abs_solver_eps)
        end if
     else
        if (present(divu_rhs)) then
-          call hg_multigrid(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
+          call hg_multigrid(mla,rh,unew,Dhu0,div_coeff_3d,phi,dx,the_bc_tower, &
                             stencil_type,rel_solver_eps,abs_solver_eps, divu_rhs)
        else
-          call hg_multigrid(mla,rh,unew,rhohalf,div_coeff_3d,phi,dx,the_bc_tower, &
+          call hg_multigrid(mla,rh,unew,Dhu0,div_coeff_3d,phi,dx,the_bc_tower, &
                             stencil_type,rel_solver_eps,abs_solver_eps)
 
        end if
@@ -211,15 +218,15 @@ contains
           call multifab_div_div_c(unew(n),d,div_coeff_3d(n),1,1,nghost(div_coeff_3d(n)))
        end do
 
-       ! Convert (rhohalf/beta_0)   back to rhohalf
-       !  OR     (rhohalf/beta_0^2) back to (rhohalf/beta_0^2)
-       call multifab_mult_mult_c(rhohalf(n),1,div_coeff_3d(n),1,1, &
-                                 nghost(div_coeff_3d(n)))
+       ! Convert (Dhu0 * u0 /beta_0)   back to Dhu0
+       !  OR     (Dhu0 * u0 /beta_0^2) back to (Dhu0/beta_0^2)
+       call multifab_mult_mult_c(Dhu0(n),rhoh_comp,div_coeff_3d(n),1,1, &
+                                 nghost(Dhu0(n)))
 
-       ! Convert (rhohalf/beta_0)   back to rhohalf
+       ! Convert (Dhu0/beta_0)   back to Dhu0
        if (using_alt_energy_fix) then
-          call multifab_mult_mult_c(rhohalf(n),1,div_coeff_3d(n),1,1, &
-                                    nghost(div_coeff_3d(n)))
+          call multifab_mult_mult_c(Dhu0(n),rhoh_comp,div_coeff_3d(n),1,1, &
+                                    nghost(Dhu0(n)))
        endif
     end do
 
@@ -229,7 +236,15 @@ contains
 
     call mkgphi(gphi,phi,div_coeff_3d,dx)
 
-    call hg_update(proj_type,unew,uold,gpi,gphi,rhohalf,  &
+    !do n = 1, nlevs
+    !    do d = 1, nfabs(Dhu0(n))
+    !        testp => dataptr(Dhu0(n), d)
+    !    enddo
+    !enddo
+
+    !print *, 'Dhu0', testp(:,:,:,rhoh_comp)
+
+    call hg_update(proj_type,unew,uold,gpi,gphi,Dhu0,  &
                    pi,phi,dt,mla,the_bc_tower%bc_tower_array,div_coeff_3d, &
                    using_alt_energy_fix)
 
@@ -276,12 +291,12 @@ contains
 
     ! ******************************************************************************* !
 
-    subroutine create_uvec_for_projection(unew,uold,rhohalf,gpi,dt,the_bc_tower, &
+    subroutine create_uvec_for_projection(unew,uold,Dhu0,gpi,dt,the_bc_tower, &
                                           proj_type)
 
       type(multifab) , intent(inout) :: unew(:)
       type(multifab) , intent(in   ) :: uold(:)
-      type(multifab) , intent(in   ) :: rhohalf(:)
+      type(multifab) , intent(in   ) :: Dhu0(:)
       type(multifab) , intent(inout) :: gpi(:)
       real(kind=dp_t), intent(in   ) :: dt
       type(bc_tower) , intent(in   ) :: the_bc_tower
@@ -303,7 +318,7 @@ contains
 
       ng_un = nghost(unew(1))
       ng_uo = nghost(uold(1))
-      ng_rh = nghost(rhohalf(1))
+      ng_rh = nghost(Dhu0(1))
       ng_gp = nghost(gpi(1))
 
       do n = 1, nlevs
@@ -314,19 +329,19 @@ contains
             unp => dataptr(unew(n)     , i)
             uop => dataptr(uold(n)     , i)
             gpp => dataptr(gpi(n)      , i)
-             rp => dataptr(  rhohalf(n), i)
+            rp => dataptr(  Dhu0(n), i)
             select case (dm)
                case (1)
                  call create_uvec_1d(unp(:,1,1,1), ng_un, uop(:,1,1,1), ng_uo, &
-                                      rp(:,1,1,1), ng_rh, gpp(:,1,1,1), ng_gp, &
+                                      rp(:,1,1,rhoh_comp), ng_rh, gpp(:,1,1,1), ng_gp, &
                                      lo,hi,dt,bc%phys_bc_level_array(i,:,:), proj_type)
                case (2)
                  call create_uvec_2d(unp(:,:,1,:), ng_un, uop(:,:,1,:), ng_uo, &
-                                      rp(:,:,1,1), ng_rh, gpp(:,:,1,:), ng_gp, &
+                                      rp(:,:,1,rhoh_comp), ng_rh, gpp(:,:,1,:), ng_gp, &
                                      lo,hi,dt,bc%phys_bc_level_array(i,:,:), proj_type)
                case (3)
                  call create_uvec_3d(unp(:,:,:,:), ng_un, uop(:,:,:,:), ng_uo, &
-                                      rp(:,:,:,1), ng_rh, gpp(:,:,:,:), ng_gp, &
+                                      rp(:,:,:,rhoh_comp), ng_rh, gpp(:,:,:,:), ng_gp, &
                                      lo,hi,dt, bc%phys_bc_level_array(i,:,:), proj_type)
             end select
          end do
@@ -338,7 +353,7 @@ contains
 
     !   ******************************************************************************** !
 
-    subroutine create_uvec_1d(unew,ng_un,uold,ng_uo,rhohalf,ng_rh,gpi,ng_gp, &
+    subroutine create_uvec_1d(unew,ng_un,uold,ng_uo,Dhu0,ng_rh,gpi,ng_gp, &
                               lo,hi,dt,phys_bc,proj_type)
 
       use proj_parameters
@@ -347,7 +362,7 @@ contains
       integer        , intent(in   ) :: lo(:),hi(:)
       real(kind=dp_t), intent(inout) ::    unew(lo(1)-ng_un:)
       real(kind=dp_t), intent(in   ) ::    uold(lo(1)-ng_uo:)
-      real(kind=dp_t), intent(in   ) :: rhohalf(lo(1)-ng_rh:)
+      real(kind=dp_t), intent(in   ) :: Dhu0(lo(1)-ng_rh:)
       real(kind=dp_t), intent(inout) ::     gpi(lo(1)-ng_gp:)
       real(kind=dp_t), intent(in   ) :: dt
       integer        , intent(in   ) :: phys_bc(:,:)
@@ -367,7 +382,7 @@ contains
       ! quantity projected is Ustar + dt * (1/rho) gpi
       else if (proj_type .eq. regular_timestep_comp) then
 
-         unew(lo(1):hi(1)) = unew(lo(1):hi(1)) + dt*gpi(lo(1):hi(1))/rhohalf(lo(1):hi(1))
+         unew(lo(1):hi(1)) = unew(lo(1):hi(1)) + dt*gpi(lo(1):hi(1))/Dhu0(lo(1):hi(1))
 
        else
 
@@ -385,7 +400,7 @@ contains
 
     !   ******************************************************************************** !
 
-    subroutine create_uvec_2d(unew,ng_un,uold,ng_uo,rhohalf,ng_rh,gpi,ng_gp, &
+    subroutine create_uvec_2d(unew,ng_un,uold,ng_uo,Dhu0,ng_rh,gpi,ng_gp, &
                               lo,hi,dt,phys_bc,proj_type)
 
       use proj_parameters
@@ -394,7 +409,7 @@ contains
       integer        , intent(in   ) :: lo(:),hi(:)
       real(kind=dp_t), intent(inout) ::    unew(lo(1)-ng_un:,lo(2)-ng_un:,:)
       real(kind=dp_t), intent(in   ) ::    uold(lo(1)-ng_uo:,lo(2)-ng_uo:,:)
-      real(kind=dp_t), intent(in   ) :: rhohalf(lo(1)-ng_rh:,lo(2)-ng_rh:)
+      real(kind=dp_t), intent(in   ) :: Dhu0(lo(1)-ng_rh:,lo(2)-ng_rh:)
       real(kind=dp_t), intent(inout) ::     gpi(lo(1)-ng_gp:,lo(2)-ng_gp:,:)
       real(kind=dp_t), intent(in   ) :: dt
       integer        , intent(in   ) :: phys_bc(:,:)
@@ -420,9 +435,9 @@ contains
       else if (proj_type .eq. regular_timestep_comp) then
 
          unew(lo(1):hi(1),lo(2):hi(2),1) = unew(lo(1):hi(1),lo(2):hi(2),1) + &
-            dt*gpi(lo(1):hi(1),lo(2):hi(2),1)/rhohalf(lo(1):hi(1),lo(2):hi(2))
+            dt*gpi(lo(1):hi(1),lo(2):hi(2),1)/Dhu0(lo(1):hi(1),lo(2):hi(2))
          unew(lo(1):hi(1),lo(2):hi(2),2) = unew(lo(1):hi(1),lo(2):hi(2),2) + &
-            dt*gpi(lo(1):hi(1),lo(2):hi(2),2)/rhohalf(lo(1):hi(1),lo(2):hi(2))
+            dt*gpi(lo(1):hi(1),lo(2):hi(2),2)/Dhu0(lo(1):hi(1),lo(2):hi(2))
 
        else
 
@@ -443,7 +458,7 @@ contains
 
     !  *********************************************************************************** !
 
-    subroutine create_uvec_3d(unew,ng_un,uold,ng_uo,rhohalf,ng_rh,gpi,ng_gp, &
+    subroutine create_uvec_3d(unew,ng_un,uold,ng_uo,Dhu0,ng_rh,gpi,ng_gp, &
                               lo,hi,dt,phys_bc,proj_type)
 
       use proj_parameters
@@ -453,7 +468,7 @@ contains
       real(kind=dp_t), intent(inout) ::    unew(lo(1)-ng_un:,lo(2)-ng_un:,lo(3)-ng_un:,:)
       real(kind=dp_t), intent(in   ) ::    uold(lo(1)-ng_uo:,lo(2)-ng_uo:,lo(3)-ng_uo:,:)
       real(kind=dp_t), intent(inout) ::     gpi(lo(1)-ng_gp:,lo(2)-ng_gp:,lo(3)-ng_gp:,:)
-      real(kind=dp_t), intent(in   ) :: rhohalf(lo(1)-ng_rh:,lo(2)-ng_rh:,lo(3)-ng_rh:)
+      real(kind=dp_t), intent(in   ) :: Dhu0(lo(1)-ng_rh:,lo(2)-ng_rh:,lo(3)-ng_rh:)
       real(kind=dp_t), intent(in   ) :: dt
       integer        , intent(in   ) :: phys_bc(:,:)
       integer        , intent(in   ) :: proj_type
@@ -486,13 +501,14 @@ contains
       ! quantity projected is Ustar + dt * (1/rho) gpi
       else if (proj_type .eq. regular_timestep_comp) then
 
+
          !$OMP PARALLEL PRIVATE(i,j,k,m)
          do m=1,3
             !$OMP DO
             do k=lo(3),hi(3)
                do j=lo(2),hi(2)
                   do i=lo(1),hi(1)
-                     unew(i,j,k,m) = unew(i,j,k,m) + dt*gpi(i,j,k,m)/rhohalf(i,j,k)
+                     unew(i,j,k,m) = unew(i,j,k,m) + dt*gpi(i,j,k,m)/Dhu0(i,j,k)
                   end do
                end do
             end do
@@ -649,7 +665,7 @@ contains
 
     ! ******************************************************************************* !
 
-    subroutine hg_update(proj_type,unew,uold,gpi,gphi,rhohalf,pi,phi,dt, &
+    subroutine hg_update(proj_type,unew,uold,gpi,gphi,Dhu0,pi,phi,dt, &
                          mla,the_bc_level,div_coeff_3d,using_alt_energy_fix)
 
       use variables, only: foextrap_comp
@@ -660,7 +676,7 @@ contains
       type(multifab) , intent(in   ) :: uold(:)
       type(multifab) , intent(inout) :: gpi(:)
       type(multifab) , intent(in   ) :: gphi(:)
-      type(multifab) , intent(in   ) :: rhohalf(:)
+      type(multifab) , intent(in   ) :: Dhu0(:)
       type(multifab) , intent(inout) :: pi(:)
       type(multifab) , intent(in   ) :: phi(:)
       real(kind=dp_t), intent(in   ) :: dt
@@ -691,7 +707,7 @@ contains
       ng_uo = nghost(uold(1))
       ng_gp = nghost(gpi(1))
       ng_gh = nghost(gphi(1))
-      ng_rh = nghost(rhohalf(1))
+      ng_rh = nghost(Dhu0(1))
       ng_p  = nghost(pi(1))
       ng_h  = nghost(phi(1))
       ng_d  = nghost(div_coeff_3d(1))
@@ -705,24 +721,24 @@ contains
             uon => dataptr(uold(n),i)
             gpp => dataptr(gpi(n),i)
             gph => dataptr(gphi(n),i)
-            rp  => dataptr(rhohalf(n),i)
+            rp  => dataptr(Dhu0(n),i)
             pp  => dataptr(pi(n),i)
             ph  => dataptr(phi(n),i)
             dp  => dataptr(div_coeff_3d(n),i)
             select case (dm)
             case (1)
                call hg_update_1d(proj_type, upn(:,1,1,1), ng_un, uon(:,1,1,1), ng_uo, &
-                                 gpp(:,1,1,1), ng_gp, gph(:,1,1,1), ng_gh, rp(:,1,1,1), &
+                                 gpp(:,1,1,1), ng_gp, gph(:,1,1,1), ng_gh, rp(:,1,1,rhoh_comp), &
                                  ng_rh, pp(:,1,1,1), ng_p, ph(:,1,1,1), ng_h, &
                                  dp(:,1,1,1), ng_d, lo, hi, dt, using_alt_energy_fix)
             case (2)
                call hg_update_2d(proj_type, upn(:,:,1,:), ng_un, uon(:,:,1,:), ng_uo, &
-                                 gpp(:,:,1,:), ng_gp, gph(:,:,1,:), ng_gh, rp(:,:,1,1), &
+                                 gpp(:,:,1,:), ng_gp, gph(:,:,1,:), ng_gh, rp(:,:,1,rhoh_comp), &
                                  ng_rh, pp(:,:,1,1), ng_p, ph(:,:,1,1), ng_h, &
                                  dp(:,:,1,1), ng_d, lo, hi, dt, using_alt_energy_fix)
             case (3)
                call hg_update_3d(proj_type, upn(:,:,:,:), ng_un, uon(:,:,:,:), ng_uo, &
-                                 gpp(:,:,:,:), ng_gp, gph(:,:,:,:), ng_gh, rp(:,:,:,1), &
+                                 gpp(:,:,:,:), ng_gp, gph(:,:,:,:), ng_gh, rp(:,:,:,rhoh_comp), &
                                  ng_rh, pp(:,:,:,1), ng_p, ph(:,:,:,1), ng_h, &
                                  dp(:,:,:,1), ng_d, lo, hi, dt, using_alt_energy_fix)
             end select
@@ -745,6 +761,13 @@ contains
                                 ng=gpi(1)%ng, &
                                 same_boundary=.true.)
 
+    call ml_restrict_and_fill(nlevs,pi,mla%mba%rr,the_bc_level, &
+                              icomp=1, &
+                              bcomp=foextrap_comp, &
+                              nc=1, &
+                              ng=pi(1)%ng, &
+                              same_boundary=.true.)
+
       call destroy(bpt)
 
     end subroutine hg_update
@@ -752,7 +775,7 @@ contains
     !   ****************************************************************************** !
 
     subroutine hg_update_1d(proj_type,unew,ng_un,uold,ng_uo,gpi,ng_gp,gphi,ng_gh, &
-                            rhohalf,ng_rh,pi,ng_p,phi,ng_h,divcoeff,ng_d,lo,hi,dt, &
+                            Dhu0,ng_rh,pi,ng_p,phi,ng_h,divcoeff,ng_d,lo,hi,dt, &
                             using_alt_energy_fix)
 
       use proj_parameters
@@ -764,7 +787,7 @@ contains
       real(kind=dp_t), intent(in   ) ::     uold(lo(1)-ng_uo:)
       real(kind=dp_t), intent(inout) ::      gpi(lo(1)-ng_gp:)
       real(kind=dp_t), intent(inout) ::     gphi(lo(1)-ng_gh:)
-      real(kind=dp_t), intent(in   ) ::  rhohalf(lo(1)-ng_rh:)
+      real(kind=dp_t), intent(in   ) ::  Dhu0(lo(1)-ng_rh:)
       real(kind=dp_t), intent(inout) ::       pi(lo(1)-ng_p :)
       real(kind=dp_t), intent(in   ) ::      phi(lo(1)-ng_h :)
       real(kind=dp_t), intent(in   ) :: divcoeff(lo(1)-ng_d :)
@@ -774,9 +797,9 @@ contains
       !     Subtract off the density-weighted gradient.
       if (using_alt_energy_fix) then
          unew(lo(1):hi(1)) = unew(lo(1):hi(1)) - &
-              divcoeff(lo(1):hi(1))*gphi(lo(1):hi(1))/rhohalf(lo(1):hi(1))
+              divcoeff(lo(1):hi(1))*gphi(lo(1):hi(1))/Dhu0(lo(1):hi(1))
       else
-         unew(lo(1):hi(1)) = unew(lo(1):hi(1)) - gphi(lo(1):hi(1))/rhohalf(lo(1):hi(1))
+         unew(lo(1):hi(1)) = unew(lo(1):hi(1)) - gphi(lo(1):hi(1))/Dhu0(lo(1):hi(1))
       endif
 
       if (proj_type .eq. pressure_iters_comp) &    ! unew held the projection of (ustar-uold)
@@ -815,7 +838,7 @@ contains
     !   ****************************************************************************** !
 
     subroutine hg_update_2d(proj_type,unew,ng_un,uold,ng_uo,gpi,ng_gp,gphi,ng_gh, &
-                            rhohalf,ng_rh,pi,ng_p,phi,ng_h,divcoeff,ng_d,lo,hi,dt, &
+                            Dhu0,ng_rh,pi,ng_p,phi,ng_h,divcoeff,ng_d,lo,hi,dt, &
                             using_alt_energy_fix)
 
       use proj_parameters
@@ -827,7 +850,7 @@ contains
       real(kind=dp_t), intent(in   ) ::     uold(lo(1)-ng_uo:,lo(2)-ng_uo:,:)
       real(kind=dp_t), intent(inout) ::      gpi(lo(1)-ng_gp:,lo(2)-ng_gp:,:)
       real(kind=dp_t), intent(inout) ::     gphi(lo(1)-ng_gh:,lo(2)-ng_gh:,:)
-      real(kind=dp_t), intent(in   ) ::  rhohalf(lo(1)-ng_rh:,lo(2)-ng_rh:)
+      real(kind=dp_t), intent(in   ) ::  Dhu0(lo(1)-ng_rh:,lo(2)-ng_rh:)
       real(kind=dp_t), intent(inout) ::       pi(lo(1)-ng_p :,lo(2)-ng_p :)
       real(kind=dp_t), intent(in   ) ::      phi(lo(1)-ng_h :,lo(2)-ng_h :)
       real(kind=dp_t), intent(in   ) :: divcoeff(lo(1)-ng_d :,lo(2)-ng_d :)
@@ -840,17 +863,17 @@ contains
       if (using_alt_energy_fix) then
          unew(lo(1):hi(1),lo(2):hi(2),1) = unew(lo(1):hi(1),lo(2):hi(2),1) - &
               gphi(lo(1):hi(1),lo(2):hi(2),1)*divcoeff(lo(1):hi(1),lo(2):hi(2))/ &
-              rhohalf(lo(1):hi(1),lo(2):hi(2))
+              Dhu0(lo(1):hi(1),lo(2):hi(2))
 
          unew(lo(1):hi(1),lo(2):hi(2),2) = unew(lo(1):hi(1),lo(2):hi(2),2) - &
               gphi(lo(1):hi(1),lo(2):hi(2),2)*divcoeff(lo(1):hi(1),lo(2):hi(2))/ &
-              rhohalf(lo(1):hi(1),lo(2):hi(2))
+              Dhu0(lo(1):hi(1),lo(2):hi(2))
       else
          unew(lo(1):hi(1),lo(2):hi(2),1) = unew(lo(1):hi(1),lo(2):hi(2),1) - &
-              gphi(lo(1):hi(1),lo(2):hi(2),1)/rhohalf(lo(1):hi(1),lo(2):hi(2))
+              gphi(lo(1):hi(1),lo(2):hi(2),1)/Dhu0(lo(1):hi(1),lo(2):hi(2))
 
          unew(lo(1):hi(1),lo(2):hi(2),2) = unew(lo(1):hi(1),lo(2):hi(2),2) - &
-              gphi(lo(1):hi(1),lo(2):hi(2),2)/rhohalf(lo(1):hi(1),lo(2):hi(2))
+              gphi(lo(1):hi(1),lo(2):hi(2),2)/Dhu0(lo(1):hi(1),lo(2):hi(2))
       endif
 
       if (proj_type .eq. pressure_iters_comp) &    ! unew held the projection of (ustar-uold)
@@ -906,7 +929,7 @@ contains
     !   ******************************************************************************* !
 
     subroutine hg_update_3d(proj_type,unew,ng_un,uold,ng_uo,gpi,ng_gp,gphi,ng_gh, &
-                            rhohalf,ng_rh,pi,ng_p,phi,ng_h,divcoeff,ng_d,lo,hi,dt, &
+                            Dhu0,ng_rh,pi,ng_p,phi,ng_h,divcoeff,ng_d,lo,hi,dt, &
                             using_alt_energy_fix)
 
       use proj_parameters
@@ -918,7 +941,7 @@ contains
       real(kind=dp_t), intent(in   ) ::     uold(lo(1)-ng_uo:,lo(2)-ng_uo:,lo(3)-ng_uo:,:)
       real(kind=dp_t), intent(inout) ::      gpi(lo(1)-ng_gp:,lo(2)-ng_gp:,lo(3)-ng_gp:,:)
       real(kind=dp_t), intent(inout) ::     gphi(lo(1)-ng_gh:,lo(2)-ng_gh:,lo(3)-ng_gh:,:)
-      real(kind=dp_t), intent(in   ) ::  rhohalf(lo(1)-ng_rh:,lo(2)-ng_rh:,lo(3)-ng_rh:)
+      real(kind=dp_t), intent(in   ) ::  Dhu0(lo(1)-ng_rh:,lo(2)-ng_rh:,lo(3)-ng_rh:)
       real(kind=dp_t), intent(inout) ::       pi(lo(1)-ng_p :,lo(2)-ng_p :,lo(3)-ng_p :)
       real(kind=dp_t), intent(in   ) ::      phi(lo(1)-ng_h :,lo(2)-ng_h :,lo(3)-ng_h :)
       real(kind=dp_t), intent(in   ) :: divcoeff(lo(1)-ng_d :,lo(2)-ng_d :,lo(3)-ng_d :)
@@ -939,7 +962,7 @@ contains
                do j=lo(2),hi(2)
                   do i=lo(1),hi(1)
                      unew(i,j,k,m) = unew(i,j,k,m) - &
-                          divcoeff(i,j,k)*gphi(i,j,k,m)/rhohalf(i,j,k)
+                          divcoeff(i,j,k)*gphi(i,j,k,m)/Dhu0(i,j,k)
                   end do
                end do
             end do
@@ -955,7 +978,7 @@ contains
             do k=lo(3),hi(3)
                do j=lo(2),hi(2)
                   do i=lo(1),hi(1)
-                     unew(i,j,k,m) = unew(i,j,k,m) - gphi(i,j,k,m)/rhohalf(i,j,k)
+                     unew(i,j,k,m) = unew(i,j,k,m) - gphi(i,j,k,m)/Dhu0(i,j,k)
                   end do
                end do
             end do
@@ -1089,7 +1112,7 @@ contains
 
   ! ******************************************************************************** !
 
-  subroutine hg_1d_solver(mla,rh,unew,rhohalf,phi,dx,the_bc_tower,stencil_type,divu_rhs)
+  subroutine hg_1d_solver(mla,rh,unew,Dhu0,phi,dx,the_bc_tower,stencil_type,divu_rhs)
 
     use bl_prof_module
     use bl_constants_module
@@ -1101,7 +1124,7 @@ contains
     type(ml_layout), intent(inout) :: mla
     type(multifab ), intent(inout) :: rh(:)
     type(multifab ), intent(inout) :: unew(:)
-    type(multifab ), intent(in   ) :: rhohalf(:)
+    type(multifab ), intent(in   ) :: Dhu0(:)
     type(multifab ), intent(inout) :: phi(:)
     real(dp_t)     , intent(in)    :: dx(:,:)
     type(bc_tower ), intent(in   ) :: the_bc_tower
@@ -1149,7 +1172,7 @@ contains
        call multifab_build(coeffs(n), la, 1, 1)
        call setval(coeffs(n), 0.0_dp_t, 1, all=.true.)
 
-       call mkcoeffs(rhohalf(n),coeffs(n))
+       call mkcoeffs(Dhu0(n),coeffs(n))
        call multifab_fill_boundary(coeffs(n))
 
     end do
