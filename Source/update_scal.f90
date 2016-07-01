@@ -14,12 +14,12 @@ module update_scal_module
 contains
 
   subroutine update_scal(mla,nstart,nstop,sold,snew,sflux,scal_force,p0_new,p0_new_cart, &
-                         dx,dt,the_bc_level)
+                         dx,dt,the_bc_level,u, alpha, beta, gam,u0)
 
     use bl_prof_module
     use bl_constants_module
     use geometry,  only: spherical
-    use variables, only: spec_comp, rho_comp
+    use variables, only: spec_comp, rho_comp, nscal
     use network,   only: nspec
     use ml_restrict_fill_module
 
@@ -33,6 +33,11 @@ contains
     type(multifab)    , intent(in   ) :: p0_new_cart(:)
     real(kind = dp_t) , intent(in   ) :: dx(:,:),dt
     type(bc_level)    , intent(in   ) :: the_bc_level(:)
+    type(multifab)    , intent(in   ) :: u(:)
+    type(multifab), intent(in) :: alpha(:)
+    type(multifab), intent(in) :: beta(:)
+    type(multifab), intent(in) :: gam(:)
+    type(multifab), intent(in) :: u0(:)
 
     ! local
     real(kind=dp_t), pointer :: sop(:,:,:,:)
@@ -42,10 +47,22 @@ contains
     real(kind=dp_t), pointer :: sfpz(:,:,:,:)
     real(kind=dp_t), pointer :: fp(:,:,:,:)
     real(kind=dp_t), pointer :: p0p(:,:,:,:)
+    real(kind=dp_t), pointer :: up(:,:,:,:)
+
+    real(kind=dp_t), pointer :: s_primp(:,:,:,:)
+    real(kind=dp_t), pointer :: u_primp(:,:,:,:)
+    real(kind=dp_t), pointer ::  alphap(:,:,:,:)
+    real(kind=dp_t), pointer ::  betap(:,:,:,:)
+    real(kind=dp_t), pointer ::  gamp(:,:,:,:)
+    real(kind=dp_t), pointer ::  u0p(:,:,:,:)
+
+
+    type(multifab) :: u_prim(mla%nlevel)
+    type(multifab) :: s_prim(mla%nlevel)
 
     integer :: lo(mla%dim),hi(mla%dim),dm,nlevs
     integer :: i,n
-    integer :: ng_so,ng_sn,ng_sf,ng_f,ng_p
+    integer :: ng_so,ng_sn,ng_sf,ng_f,ng_p, ng_u
 
     type(bl_prof_timer), save :: bpt
 
@@ -59,8 +76,14 @@ contains
     ng_sf = nghost(sflux(1,1))
     ng_f  = nghost(scal_force(1))
     ng_p  = nghost(p0_new_cart(1))
+    ng_u = nghost(u(1))
 
     do n=1,nlevs
+
+        call multifab_build(u_prim(n), mla%la(n), dm, ng_u)
+        call setval(u_prim(n), ZERO, all=.true.)
+        call multifab_build(s_prim(n), mla%la(n), nscal, ng_so)
+        call setval(s_prim(n), ZERO, all=.true.)
 
        do i = 1, nfabs(sold(n))
           sop => dataptr(sold(n),i)
@@ -87,12 +110,23 @@ contains
           case (3)
              sfpy => dataptr(sflux(n,2),i)
              sfpz => dataptr(sflux(n,3),i)
+             up => dataptr(u(n),i)
+             s_primp => dataptr(s_prim(n),i)
+             u_primp => dataptr(u_prim(n),i)
+             alphap => dataptr(alpha(n), i)
+             betap => dataptr(beta(n), i)
+             gamp => dataptr(gam(n), i)
+             u0p => dataptr(u0(n), i)
              if (spherical .eq. 0) then
                 call update_scal_3d_cart(nstart, nstop, &
                                          sop(:,:,:,:), ng_so, snp(:,:,:,:), ng_sn, &
                                          sfpx(:,:,:,:), sfpy(:,:,:,:), sfpz(:,:,:,:), &
                                          ng_sf, fp(:,:,:,:), ng_f, &
-                                         p0_new(n,:), lo, hi, dx(n,:), dt)
+                                         p0_new(n,:), lo, hi, dx(n,:), dt, &
+                                         up(:,:,:,:), ng_u, &
+                                         s_primp(:,:,:,:), u_primp(:,:,:,:),&
+                                         alphap(:,:,:,1), betap(:,:,:,:), &
+                                         gamp(:,:,:,:), u0p(:,:,:,1))
              else
                 p0p => dataptr(p0_new_cart(n), i)
                 call update_scal_3d_sphr(nstart, nstop, &
@@ -102,9 +136,11 @@ contains
                                          p0p(:,:,:,1), ng_p, lo, hi, dx(n,:), dt)
              end if
           end select
+          !print *, 'snew: ', snp(:,:,:,rho_comp)
        end do
 
     end do
+
 
     ! restrict data and fill all ghost cells
     call ml_restrict_and_fill(nlevs,snew,mla%mba%rr,the_bc_level, &
@@ -124,6 +160,11 @@ contains
     end if
 
     call destroy(bpt)
+
+    do n=1,nlevs
+        call destroy(s_prim(n))
+        call destroy(u_prim(n))
+    enddo
 
   end subroutine update_scal
 
@@ -368,7 +409,7 @@ contains
   end subroutine update_scal_2d
 
   subroutine update_scal_3d_cart(nstart,nstop,sold,ng_so,snew,ng_sn,sfluxx,sfluxy,sfluxz, &
-                                 ng_sf,force,ng_f,p0_new,lo,hi,dx,dt)
+                                 ng_sf,force,ng_f,p0_new,lo,hi,dx,dt,u,ng_u,s_prim,u_prim,alpha,beta,gam,u0)
 
     use network,       only: nspec
     use eos_module,    only: eos, eos_input_rp
@@ -377,9 +418,10 @@ contains
     use variables,     only: spec_comp, rho_comp, rhoh_comp, temp_comp
     use pred_parameters
     use bl_constants_module
+    use metric_module, only: cons_to_prim_a, prim_to_cons_a
 
     integer           , intent(in   ) :: nstart, nstop, lo(:), hi(:)
-    integer           , intent(in   ) :: ng_so, ng_sn, ng_sf, ng_f
+    integer           , intent(in   ) :: ng_so, ng_sn, ng_sf, ng_f, ng_u
     real (kind = dp_t), intent(in   ) ::   sold(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
     real (kind = dp_t), intent(  out) ::   snew(lo(1)-ng_sn:,lo(2)-ng_sn:,lo(3)-ng_sn:,:)
     real (kind = dp_t), intent(in   ) :: sfluxx(lo(1)-ng_sf:,lo(2)-ng_sf:,lo(3)-ng_sf:,:)
@@ -388,6 +430,13 @@ contains
     real (kind = dp_t), intent(in   ) ::  force(lo(1)-ng_f :,lo(2)-ng_f :,lo(3)-ng_f :,:)
     real (kind = dp_t), intent(in   ) :: p0_new(0:)
     real (kind = dp_t), intent(in   ) :: dt,dx(:)
+    real (kind = dp_t), intent(in   ) ::   u(lo(1)-ng_u:,lo(2)-ng_u:,lo(3)-ng_u:,:)
+    real (kind = dp_t), intent(inout) ::   s_prim(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
+    real (kind = dp_t), intent(inout) ::   u_prim(lo(1)-ng_u:,lo(2)-ng_u:,lo(3)-ng_u:,:)
+    real(kind=dp_t), intent(in) :: alpha(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:)
+    real(kind=dp_t), intent(in) :: beta(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
+    real(kind=dp_t), intent(in) :: gam(lo(1)-ng_so:,lo(2)-ng_so:,lo(3)-ng_so:,:)
+    real(kind=dp_t), intent(in) :: u0(:,:,:)
 
     integer            :: i, j, k, comp, comp2
     real (kind = dp_t) :: divterm
@@ -420,24 +469,36 @@ contains
 
     if ( do_eos_h_above_cutoff .and. (nstart .eq. rhoh_comp) ) then
 
+        u_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:) = u(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
+
+       s_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:) = snew(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
+
+       s_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),temp_comp) = sold(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),temp_comp)
+
+       call cons_to_prim_a(s_prim, u_prim, alpha, beta, gam, s_prim,lo,hi,ng_so,ng_u)
+
        !$OMP PARALLEL DO PRIVATE(i,j,k,eos_state,pt_index)
        do k = lo(3), hi(3)
           do j = lo(2), hi(2)
              do i = lo(1), hi(1)
 
-                if (snew(i,j,k,rho_comp) .le. base_cutoff_density) then
+                if (s_prim(i,j,k,rho_comp) .le. base_cutoff_density) then
 
-                   eos_state%rho = snew(i,j,k,rho_comp)
-                   eos_state%T   = sold(i,j,k,temp_comp)
+                   !eos_state%rho = snew(i,j,k,rho_comp)
+                   !eos_state%T   = sold(i,j,k,temp_comp)
+                   eos_state%rho = s_prim(i,j,k,rho_comp)
+                   eos_state%T   = s_prim(i,j,k,temp_comp)
                    eos_state%p   = p0_new(k)
-                   eos_state%xn  = snew(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
+                   !eos_state%xn  = snew(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
+                   eos_state%xn  = s_prim(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
 
                    pt_index(:) = (/i, j, k/)
 
                    ! (rho,P) --> T,h
                    call eos(eos_input_rp, eos_state, pt_index)
 
-                   snew(i,j,k,rhoh_comp) = snew(i,j,k,rho_comp) * eos_state%h
+                   !snew(i,j,k,rhoh_comp) = snew(i,j,k,rho_comp) * eos_state%h
+                   s_prim(i,j,k,rhoh_comp) = s_prim(i,j,k,rho_comp) * eos_state%h
 
                 end if
 
@@ -445,6 +506,12 @@ contains
           enddo
        enddo
        !$OMP END PARALLEL DO
+
+       call prim_to_cons_a(s_prim, u0, s_prim)
+
+       snew(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),rhoh_comp) = s_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),rhoh_comp)
+
+
 
     end if
 

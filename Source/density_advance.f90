@@ -20,7 +20,8 @@ contains
   subroutine density_advance(mla,which_step,sold,snew,sedge,sflux,scal_force,&
                              umac,w0,w0mac,etarhoflux, &
                              D0_old,D0_new,p0_dummy, &
-                             D0_predicted_edge,dx,dt,the_bc_level)
+                             D0_predicted_edge,dx,dt,the_bc_level, &
+                             u, alpha, beta, gam,u0)
 
     use bl_prof_module, only: bl_prof_timer, build, destroy
     use bl_constants_module, only: ZERO, ONE
@@ -57,6 +58,11 @@ contains
     real(kind=dp_t), intent(in   ) :: D0_predicted_edge(:,0:)
     real(kind=dp_t), intent(in   ) :: dx(:,:),dt
     type(bc_level) , intent(in   ) :: the_bc_level(:)
+    type(multifab)    , intent(in   ) :: u(:)
+    type(multifab), intent(in) :: alpha(:)
+    type(multifab), intent(in) :: beta(:)
+    type(multifab), intent(in) :: gam(:)
+    type(multifab), intent(in) :: u0(:)
 
     type(multifab) :: D0_old_cart(mla%nlevel)
     type(multifab) :: p0_dummy_cart(mla%nlevel)
@@ -358,11 +364,13 @@ contains
     end if
 
     call update_scal(mla,spec_comp,spec_comp+nspec-1,sold,snew,sflux,scal_force, &
-                     p0_dummy,p0_dummy_cart,dx,dt,the_bc_level)
+                     p0_dummy,p0_dummy_cart,dx,dt,the_bc_level,u,alpha,beta, &
+                     gam,u0)
 
     if (ntrac .ge. 1) then
        call update_scal(mla,trac_comp,trac_comp+ntrac-1,sold,snew,sflux,scal_force, &
-                        p0_dummy,p0_dummy_cart,dx,dt,the_bc_level)
+                        p0_dummy,p0_dummy_cart,dx,dt,the_bc_level,u,alpha, &
+                        beta,gam,u0)
     end if
 
     if (spherical .eq. 1) then

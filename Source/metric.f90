@@ -21,7 +21,8 @@ module metric_module
     private :: root_find_on_me, Newton_Raphson
 
     public :: make_weak_field, inverse_metric, calcW, calcu0, calcu0_1d, &
-              g, christoffels, cons_to_prim, prim_to_cons, prim_to_cons_1d
+              g, christoffels, cons_to_prim, prim_to_cons, prim_to_cons_1d, &
+              cons_to_prim_a, prim_to_cons_a
 
 contains
 
@@ -580,6 +581,72 @@ contains
 
     end subroutine cons_to_prim
 
+    subroutine cons_to_prim_a(s, u, alpha, beta, gam, s_prim,lo,hi,ng_s,ng_u)
+        ! Works on arrays
+        ! Must fill primitive ghosts after calling this function
+        ! Does not convert u as not needed in any of the functions that call
+        ! this.
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
+        ! FIXME: need to import thermal gamma
+        use probin_module, only : gamm_therm
+
+
+        integer, intent(in) :: lo(:),hi(:),ng_s,ng_u
+        real(kind=dp_t), intent(in) :: s(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)
+        real(kind=dp_t), intent(in) :: u(lo(1)-ng_u:,lo(2)-ng_u:,lo(3)-ng_u:,:)
+        real(kind=dp_t), intent(in) :: alpha(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:)
+        real(kind=dp_t), intent(in) :: beta(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)
+        real(kind=dp_t), intent(in) :: gam(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)
+        real(kind=dp_t), intent(inout) :: s_prim(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)
+
+        real(kind=dp_t) :: pmin, pmax, pbar, u0
+
+        integer :: i,j,k,l
+        logical :: fail
+
+
+       !print *, 's', sp(:,:,:,rhoh_comp)
+
+       ! initialise by simply copying - assume rest of the components are unchanged
+       s_prim(:,:,:,:) = s(:,:,:,:)
+
+       do k = lo(3), hi(3)
+           do j = lo(2), hi(2)
+               do i = lo(1), hi(1)
+                   !pmin = (Dh - D) * (gamma - 1.) / gamma
+                   !pmax = (gamma - 1.) * Dh
+                   pmin = (s(i,j,k,rhoh_comp) - s(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / gamm_therm
+                   if (pmin < 0.d0) then
+                       pmin = 0.d0
+                   endif
+                   pmax = (gamm_therm - 1.d0) * s(i,j,k,rhoh_comp)
+                   pbar = 0.5d0 * (pmin + pmax)
+
+                   !print *, 'pmax', pmax
+
+                   !print *, 'hi'
+
+                   call Newton_Raphson(pmin, pmax, pbar, root_find_on_me, &
+                   s(i,j,k,rho_comp), u(i,j,k,:), &
+                   s(i,j,k,rhoh_comp), alpha(i,j,k), &
+                   beta(i,j,k,:), gam(i,j,k,:), fail)
+
+                   u0 = (s(i,j,k,rhoh_comp) - s(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / (gamm_therm * pbar)
+
+                   !print *, 'pmax', pmax
+
+                   s_prim(i,j,k,rho_comp) = s(i,j,k,rho_comp) / u0
+                   s_prim(i,j,k,rhoh_comp) = s(i,j,k,rhoh_comp) / u0
+                   do l = 0, nspec-1
+                       s_prim(i,j,k,spec_comp+l) = s(i,j,k,spec_comp+l) / u0
+                   enddo
+               enddo
+           enddo
+       enddo
+
+
+    end subroutine cons_to_prim_a
+
     subroutine root_find_on_me(pnew, pbar, dp, D, U, Dh, alpha, gam, beta)
         ! FIXME: need to import thermal gamma
         use probin_module, only : gamm_therm, c
@@ -762,6 +829,25 @@ contains
 
 
    end subroutine prim_to_cons
+
+   subroutine prim_to_cons_a(s, u0, s_prim)
+       use variables, only: rho_comp, rhoh_comp, spec_comp, nspec,nscal
+
+       real(kind=dp_t), intent(inout) :: s(:,:,:,:)
+       real(kind=dp_t), intent(in) :: u0(:,:,:)
+       real(kind=dp_t), intent(in) :: s_prim(:,:,:,:)
+
+       integer :: i
+
+      ! intialise by simply copying - assume rest of the components are unchanged
+      s(:,:,:,:) = s_prim(:,:,:,:)
+
+      s(:,:,:,rho_comp) = s_prim(:,:,:,rho_comp) * u0(:,:,:)
+      s(:,:,:,rhoh_comp) = s_prim(:,:,:,rhoh_comp) * u0(:,:,:)
+      do i = 0, nspec-1
+          s(:,:,:,spec_comp+i) = s_prim(:,:,:,spec_comp+i) * u0(:,:,:)
+      enddo
+  end subroutine prim_to_cons_a
 
    subroutine prim_to_cons_1d(s, u0_1d, s_prim)
        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec

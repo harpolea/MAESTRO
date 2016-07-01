@@ -515,16 +515,8 @@ contains
                                  .false.,dx,the_bc_level,mla)
     end if
 
-    do n=1,nlevs
-       ng_s = nghost(sold(n))
-       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
-       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
-    end do
-    call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
-
-    ! FIXME: scalforce in terms of primitive variables???
-    call update_scal(mla,rhoh_comp,rhoh_comp,s_prim,snew,sflux,scal_force, &
-                     p0_new,p0_new_cart,dx,dt,the_bc_level)
+    call update_scal(mla,rhoh_comp,rhoh_comp,sold,snew,sflux,scal_force, &
+                     p0_new,p0_new_cart,dx,dt,the_bc_level,uold,alpha,beta,gam,u0)
 
     if (spherical .eq. 1) then
        do n=1,nlevs
@@ -532,12 +524,6 @@ contains
        end do
     end if
 
-    call prim_to_cons(snew, u_prim, u0, snew, u_prim, mla,the_bc_level)
-
-    do n=1, nlevs
-        call destroy(s_prim(n))
-        call destroy(u_prim(n))
-    enddo
 
     if ( verbose .ge. 1 ) then
        do n=1,nlevs

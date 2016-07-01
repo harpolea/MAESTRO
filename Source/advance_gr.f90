@@ -600,7 +600,8 @@ contains
 
     call density_advance(mla,1,s1,s2,sedge,sflux,scal_force,umac,w0,w0mac,etarhoflux, &
                          D0_old,D0_new,p0_old,D0_predicted_edge, &
-                         dx,dt,the_bc_tower%bc_tower_array)
+                         dx,dt,the_bc_tower%bc_tower_array,uold,alpha,beta, &
+                         gam,u0)
 
     ! Now compute the new etarho
     if (evolve_base_state) then
@@ -741,6 +742,7 @@ contains
     ! pass temperature through for seeding the temperature update eos call
     ! pi goes along for the ride
     do n=1,nlevs
+       call multifab_copy_c(s2(n), 1, s1(n), 1, nscal, nghost(sold(n)))
        call multifab_copy_c(s2(n),temp_comp,s1(n),temp_comp,1,nghost(sold(n)))
        call multifab_copy_c(s2(n),pi_comp,  s1(n),pi_comp,  1,nghost(sold(n)))
     end do
@@ -762,8 +764,12 @@ contains
        call makeTfromRhoH(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     end if
 
-    ! TODO: maybe only update the temp comp?
-    call prim_to_cons(s2, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+    ! only update the temp comp by saving converted to s_prim then copying temp back across
+    call prim_to_cons(s_prim, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+    do n=1,nlevs
+       call multifab_copy_c(s2(n),temp_comp,s_prim(n),temp_comp,1,nghost(sold(n)))
+    end do
 
     if (use_thermal_diffusion) then
        ! make a copy of s2star since these are needed to compute
@@ -1161,7 +1167,7 @@ contains
 
     call density_advance(mla,2,s1,s2,sedge,sflux,scal_force,umac,w0,w0mac,etarhoflux, &
                          D0_old,D0_new,p0_new,D0_predicted_edge,dx,dt, &
-                         the_bc_tower%bc_tower_array)
+                         the_bc_tower%bc_tower_array,uold,alpha,beta,gam,u0)
 
     ! 8C
 
@@ -1332,6 +1338,7 @@ contains
     ! pass temperature through for seeding the temperature update eos call
     ! pi just goes along for the ride too
     do n=1,nlevs
+       call multifab_copy_c(s2(n), 1, s1(n), 1, nscal, nghost(sold(n)))
        call multifab_copy_c(s2(n),temp_comp,s1(n),temp_comp,1,nghost(sold(n)))
        call multifab_copy_c(s2(n),pi_comp,  s1(n),pi_comp,  1,nghost(sold(n)))
     end do
@@ -1344,7 +1351,12 @@ contains
        call makeTfromRhoH(s_prim,p0_new,mla,the_bc_tower%bc_tower_array,dx)
     end if
 
-    call prim_to_cons(s2, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+    ! only update the temp comp by saving converted to s_prim then copying temp back across
+    call prim_to_cons(s_prim, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+    do n=1,nlevs
+       call multifab_copy_c(s2(n),temp_comp,s_prim(n),temp_comp,1,nghost(sold(n)))
+    end do
 
     do n=1,nlevs
        call destroy(s1(n))
