@@ -89,6 +89,9 @@ contains
     type(multifab) :: Xkcoeff(mla%nlevel)
     type(multifab) :: pcoeff(mla%nlevel)
 
+    type(multifab) :: s_prim(mla%nlevel)
+    type(multifab) :: u_prim(mla%nlevel)
+
     real(dp_t) ::            etarho_ec(nlevs_radial,0:nr_fine)
     real(dp_t) ::                 Sbar(nlevs_radial,0:nr_fine-1)
     real(dp_t) ::             w0_force(nlevs_radial,0:nr_fine-1)
@@ -120,6 +123,8 @@ contains
        call multifab_build(rho_Hext(n),     mla%la(n), 1,     0)
        call multifab_build(rho_omegadot(n), mla%la(n), nspec, 0)
        call multifab_build(rho_Hnuc(n),     mla%la(n), 1,     0)
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
     end do
 
     ! burn to define rho_omegadot and rho_Hnuc -- needed to make S
@@ -156,18 +161,22 @@ contains
        call multifab_build(delta_gamma1(n),      mla%la(n), 1, 0)
     end do
 
+    call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
     call make_S(Source_old,delta_gamma1_term,delta_gamma1, &
-                sold,uold, &
+                s_prim, u_prim, &
                 normal, &
                 rho_omegadot,rho_Hnuc,rho_Hext,thermal, &
                 p0_old,gamma1bar,delta_gamma1_termbar,psi, &
-                dx,mla,the_bc_tower%bc_tower_array)
+                dx,mla,the_bc_tower%bc_tower_array,u0)
 
     do n=1,nlevs
        call destroy(rho_omegadot(n))
        call destroy(rho_Hnuc(n))
        call destroy(rho_Hext(n))
        call destroy(delta_gamma1(n))
+       call destroy(s_prim(n))
+       call destroy(u_prim(n))
     end do
 
     if (evolve_base_state) then

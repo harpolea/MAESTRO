@@ -1,0 +1,7 @@
+pert_temp_factor                    real               1.d0
+pert_rad_factor                     real               1.d0
+do_small_domain                     logical           .false.
+g                                   real               0.d0
+c                                   real               1.d0
+Rr                                  real               1000.d0
+gamm_therm                          real               1.6666667d0

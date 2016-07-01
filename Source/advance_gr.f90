@@ -303,6 +303,13 @@ contains
        call multifab_build(rho_Hnuc1(n),     mla%la(n), 1,     0)
     end do
 
+    ! Initialise primitive variable multifabs
+    do n=1,nlevs
+       ng_s = nghost(sold(n))
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+    end do
+
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot1,rho_Hnuc1,rho_Hext,p0_old,halfdt,dx, &
                      the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam,u0)
 
@@ -659,12 +666,16 @@ contains
              call multifab_build(gamma1(n), mla%la(n), 1, 0)
           end do
 
+          call cons_to_prim(s1, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
           ! compute gamma1bar^{(1)} and store it in gamma1bar_temp1
-          call make_gamma(mla,gamma1,s1,p0_old,dx)
+          call make_gamma(mla,gamma1,s_prim,p0_old,dx)
           call average(mla,gamma1,gamma1bar_temp1,dx,1)
 
+          call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
           ! compute gamma1bar^{(2),*} and store it in gamma1bar_temp2
-          call make_gamma(mla,gamma1,s2,p0_new,dx)
+          call make_gamma(mla,gamma1,s_prim,p0_new,dx)
           call average(mla,gamma1,gamma1bar_temp2,dx,1)
 
           do n=1,nlevs
@@ -749,12 +760,6 @@ contains
 
     ! FIXME: rho has somehow dropped by factor of 1e-6 here???
 
-    !!!! This needs the primitive variables
-    do n=1,nlevs
-       ng_s = nghost(s2(n))
-       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
-       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
-    end do
     call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     ! now update temperature
@@ -818,7 +823,9 @@ contains
           call multifab_build(gamma1(n), mla%la(n), 1, 0)
        end do
 
-       call make_gamma(mla,gamma1,snew,p0_new,dx)
+       call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+       call make_gamma(mla,gamma1,s_prim,p0_new,dx)
        call average(mla,gamma1,gamma1bar,dx,1)
 
        do n=1,nlevs
@@ -913,7 +920,7 @@ contains
                 normal, &
                 rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
                 p0_old,gamma1bar,delta_gamma1_termbar,psi, &
-                dx,mla,the_bc_tower%bc_tower_array)
+                dx,mla,the_bc_tower%bc_tower_array,u0)
 
     do n=1,nlevs
        call destroy(rho_Hext(n))
@@ -1241,8 +1248,10 @@ contains
              call multifab_build(gamma1(n), mla%la(n), 1, 0)
           end do
 
+          call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
           ! compute gamma1bar^{(2)} and store it in gamma1bar_temp2
-          call make_gamma(mla,gamma1,s2,p0_new,dx)
+          call make_gamma(mla,gamma1,s_prim,p0_new,dx)
           call average(mla,gamma1,gamma1bar_temp2,dx,1)
 
           do n=1,nlevs
@@ -1399,7 +1408,9 @@ contains
           call multifab_build(gamma1(n), mla%la(n), 1, 0)
        end do
 
-       call make_gamma(mla,gamma1,snew,p0_new,dx)
+       call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+       call make_gamma(mla,gamma1,s_prim,p0_new,dx)
        call average(mla,gamma1,gamma1bar,dx,1)
 
        do n=1,nlevs
@@ -1480,7 +1491,7 @@ contains
                 normal, &
                 rho_omegadot2,rho_Hnuc2,rho_Hext,thermal2, &
                 p0_new,gamma1bar,delta_gamma1_termbar,psi, &
-                dx,mla,the_bc_tower%bc_tower_array)
+                dx,mla,the_bc_tower%bc_tower_array,u0)
 
     do n=1,nlevs
        call destroy(delta_gamma1(n))

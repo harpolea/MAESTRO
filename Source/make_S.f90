@@ -4,7 +4,7 @@
 ! correct for the approximation that Gamma_1 -> \bar{Gamma_1} in the
 ! constraint.  First we compute the main part of the term and then
 ! we average it.  Finally we correct the full version of the term to
-! account for the psi term that comes from the base state.  
+! account for the psi term that comes from the base state.
 
 module make_S_module
 
@@ -27,7 +27,7 @@ contains
                     normal, &
                     rho_omegadot,rho_Hnuc,rho_Hext,thermal, &
                     p0,gamma1bar,delta_gamma1_termbar,psi, &
-                    dx,mla,the_bc_level)
+                    dx,mla,the_bc_level,u0)
 
     use bl_constants_module
     use bl_prof_module
@@ -56,12 +56,13 @@ contains
     real(kind=dp_t), intent(in   ) :: dx(:,:)
     type(ml_layout), intent(in   ) :: mla
     type(bc_level) , intent(in   ) :: the_bc_level(:)
+    type(multifab) , intent(in   ) :: u0(:)
 
     real(kind=dp_t), pointer:: srcp(:,:,:,:),dgtp(:,:,:,:),sp(:,:,:,:),up(:,:,:,:)
     real(kind=dp_t), pointer:: tp(:,:,:,:),dgp(:,:,:,:)
     real(kind=dp_t), pointer:: omegap(:,:,:,:), hep(:,:,:,:), hnp(:,:,:,:)
     real(kind=dp_t), pointer:: np(:,:,:,:)
-    real(kind=dp_t), pointer:: gp0p(:,:,:,:), p0p(:,:,:,:), g1p(:,:,:,:), psp(:,:,:,:)
+    real(kind=dp_t), pointer:: gp0p(:,:,:,:), p0p(:,:,:,:), g1p(:,:,:,:), psp(:,:,:,:), u0p(:,:,:,:)
 
     integer :: lo(MAX_SPACEDIM),hi(MAX_SPACEDIM),dm,nlevs
     integer :: i,n, r
@@ -136,7 +137,7 @@ contains
     do n = 1, nlevs
 
        lo(:) = 1; hi(:) = 1
-       
+
        do i = 1, nfabs(state(n))
           srcp => dataptr(Source(n), i)
           dgtp     => dataptr(delta_gamma1_term(n), i)
@@ -147,6 +148,7 @@ contains
           hep    => dataptr(rho_Hext(n), i)
           hnp    => dataptr(rho_Hnuc(n), i)
           tp     => dataptr(thermal(n), i)
+          u0p => dataptr(u0(n),i)
           lo(1:dm) = lwb(get_box(state(n), i))
           hi(1:dm) = upb(get_box(state(n), i))
 
@@ -154,10 +156,10 @@ contains
 
              gp0p => dataptr(gradp0_cart(n), i)
              ng_gp = nghost(gradp0_cart(1))
-             
+
              p0p => dataptr(p0_cart(n), i)
              ng_p0 = nghost(p0_cart(1))
-             
+
              g1p => dataptr(gamma1bar_cart(n), i)
              ng_g1 = nghost(gamma1bar_cart(1))
 
@@ -185,7 +187,8 @@ contains
                               hnp(:,:,:,1), lbound(hnp), &
                               hep(:,:,:,1), lbound(hep), &
                               tp(:,:,:,1), lbound(tp), &
-                              p0(n,:), gamma1bar(n,:), dx(n,:))
+                              p0(n,:), gamma1bar(n,:), dx(n,:), &
+                              u0p(:,:,:,1), lbound(u0p))
           end if
 
        end do
@@ -276,7 +279,7 @@ contains
                          rho_Hnuc, hnlo, &
                          rho_Hext, helo, &
                          thermal, thlo, &
-                         p0,gamma1bar,dx)
+                         p0,gamma1bar,dx, u0, u0lo)
 
     use bl_constants_module
     use eos_module, only: eos, eos_input_rt
@@ -289,7 +292,7 @@ contains
     integer         , intent(in   ) :: dm, n, lo(:),hi(:)
     integer         , intent(in   ) :: srlo(4), dtlo(4), dglo(4)
     integer         , intent(in   ) :: slo(4), ulo(4), rwlo(4)
-    integer         , intent(in   ) :: hnlo(4), helo(4), thlo(4)
+    integer         , intent(in   ) :: hnlo(4), helo(4), thlo(4), u0lo(4)
 
     real (kind=dp_t), intent(  out) ::            Source(srlo(1): ,srlo(2): ,srlo(3): )
     real (kind=dp_t), intent(  out) :: delta_gamma1_term(dtlo(1): ,dtlo(2): ,dtlo(3): )
@@ -300,6 +303,7 @@ contains
     real (kind=dp_t), intent(in   ) ::          rho_Hnuc(hnlo(1): ,hnlo(2): ,hnlo(3): )
     real (kind=dp_t), intent(in   ) ::          rho_Hext(helo(1): ,helo(2): ,helo(3): )
     real (kind=dp_t), intent(in   ) ::           thermal(thlo(1): ,thlo(2): ,thlo(3): )
+    real (kind=dp_t), intent(in   ) ::           u0(u0lo(1): ,u0lo(2): ,u0lo(3): )
     real (kind=dp_t), intent(in   ) :: p0(0:)
     real (kind=dp_t), intent(in   ) :: gamma1bar(0:)
     real (kind=dp_t), intent(in   ) :: dx(:)
@@ -313,7 +317,7 @@ contains
 
     Source = zero
     r = -1
-    
+
     !$OMP PARALLEL DO PRIVATE(i,j,k,r,comp,sigma,xi_term,pres_term,gradp0,eos_state,pt_index)
     do k = lo(3), hi(3)
        do j = lo(2), hi(2)
@@ -335,16 +339,16 @@ contains
              pres_term = ZERO
              do comp = 1, nspec
                 xi_term = xi_term - &
-                     eos_state%dhdX(comp)*rho_omegadot(i,j,k,comp)/eos_state%rho 
+                     eos_state%dhdX(comp)*rho_omegadot(i,j,k,comp)/(eos_state%rho*eos_state%h*u0(i,j,k))
 
                 pres_term = pres_term + &
-                     eos_state%dpdX(comp)*rho_omegadot(i,j,k,comp)/eos_state%rho
+                     eos_state%dpdX(comp)*rho_omegadot(i,j,k,comp)/(eos_state%rho*eos_state%h*u0(i,j,k))
              enddo
 
-             Source(i,j,k) = (sigma/eos_state%rho) * &
+             Source(i,j,k) = (sigma/(eos_state%rho*eos_state%h*u0(i,j,k))) * &
                   ( rho_Hext(i,j,k) + rho_Hnuc(i,j,k) + thermal(i,j,k) ) &
                   + sigma*xi_term &
-                  + pres_term/(eos_state%rho*eos_state%dpdr)
+                  + pres_term/(eos_state%rho*eos_state%h*u0(i,j,k)*eos_state%dpdr)
 
              select case (dm)
              case (1)
@@ -354,7 +358,7 @@ contains
              case (3)
                 r = k
              end select
-             
+
              if (use_delta_gamma1_term .and. r < anelastic_cutoff_coord(n)) then
                 if (r .eq. 0) then
                    gradp0 = (p0(r+1) - p0(r))/dx(dm)
@@ -363,16 +367,16 @@ contains
                 else
                    gradp0 = HALF*(p0(r+1) - p0(r-1))/dx(dm)
                 endif
-                
+
                 delta_gamma1(i,j,k) = eos_state%gam1 - gamma1bar(r)
-                
+
                 delta_gamma1_term(i,j,k) = (eos_state%gam1 - gamma1bar(r))*u(i,j,k,dm)* &
                      gradp0/(gamma1bar(r)*gamma1bar(r)*p0(r))
              else
                 delta_gamma1_term(i,j,k) = ZERO
                 delta_gamma1(i,j,k) = ZERO
              endif
-             
+
           enddo
        enddo
     enddo
@@ -400,7 +404,7 @@ contains
 
     real (kind=dp_t), intent(  out) ::         Source(lo(1)-ng_sr:,lo(2)-ng_sr:,lo(3)-ng_sr:)
     real (kind=dp_t), intent(  out) ::       dg1_term(lo(1)-ng_dt:,lo(2)-ng_dt:,lo(3)-ng_dt:)
-    real (kind=dp_t), intent(  out) ::   delta_gamma1(lo(1)-ng_dg:,lo(2)-ng_dg:,lo(3)-ng_dg:) 
+    real (kind=dp_t), intent(  out) ::   delta_gamma1(lo(1)-ng_dg:,lo(2)-ng_dg:,lo(3)-ng_dg:)
     real (kind=dp_t), intent(in   ) ::              s(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :,:)
     real (kind=dp_t), intent(in   ) ::              u(lo(1)-ng_s :,lo(2)-ng_s :,lo(3)-ng_s :,:)
     real (kind=dp_t), intent(in   ) ::   rho_omegadot(lo(1)-ng_rw:,lo(2)-ng_rw:,lo(3)-ng_rw:,:)
@@ -444,7 +448,7 @@ contains
              pres_term = ZERO
              do comp = 1, nspec
                 xi_term = xi_term - &
-                     eos_state%dhdX(comp)*rho_omegadot(i,j,k,comp)/eos_state%rho 
+                     eos_state%dhdX(comp)*rho_omegadot(i,j,k,comp)/eos_state%rho
 
                 pres_term = pres_term + &
                      eos_state%dpdX(comp)*rho_omegadot(i,j,k,comp)/eos_state%rho
@@ -458,11 +462,11 @@ contains
 
              if (use_delta_gamma1_term) then
                 delta_gamma1(i,j,k) = eos_state%gam1 - gamma1bar_cart(i,j,k)
-                
+
                 Ut_dot_er = &
                      u(i,j,k,1)*normal(i,j,k,1) + &
                      u(i,j,k,2)*normal(i,j,k,2) + &
-                     u(i,j,k,3)*normal(i,j,k,3)                
+                     u(i,j,k,3)*normal(i,j,k,3)
 
                 dg1_term(i,j,k) = delta_gamma1(i,j,k)*Ut_dot_er* &
                      gradp0_cart(i,j,k)/ &

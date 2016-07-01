@@ -523,11 +523,13 @@ contains
                !print *, 's', sp(:,:,:,rhoh_comp)
 
                ! initialise by simply copying - assume rest of the components are unchanged
-               s_primp(:,:,:,:) = sp(:,:,:,:)
+
 
                do k = lo(3), hi(3)
                    do j = lo(2), hi(2)
                        do i = lo(1), hi(1)
+
+                           s_primp(i,j,k,:) = sp(i,j,k,:)
                            !pmin = (Dh - D) * (gamma - 1.) / gamma
                            !pmax = (gamma - 1.) * Dh
                            pmin = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / gamm_therm

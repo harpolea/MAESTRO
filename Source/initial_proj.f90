@@ -135,7 +135,7 @@ contains
                 normal, &
                 rho_omegadot1,rho_Hnuc1,rho_Hext,thermal, &
                 p0,gamma1bar,delta_gamma1_termbar,psi, &
-                dx,mla,the_bc_tower%bc_tower_array)
+                dx,mla,the_bc_tower%bc_tower_array,u0)
 
     do n=1,nlevs
        call destroy(rho_omegadot1(n))
