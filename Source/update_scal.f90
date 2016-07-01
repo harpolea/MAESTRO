@@ -512,7 +512,6 @@ contains
        snew(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),rhoh_comp) = s_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),rhoh_comp)
 
 
-
     end if
 
 

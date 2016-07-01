@@ -22,7 +22,8 @@ module metric_module
 
     public :: make_weak_field, inverse_metric, calcW, calcu0, calcu0_1d, &
               g, christoffels, cons_to_prim, prim_to_cons, prim_to_cons_1d, &
-              cons_to_prim_a, prim_to_cons_a
+              cons_to_prim_a, prim_to_cons_a, cons_to_prim_edge, &
+              prim_to_cons_edge
 
 contains
 
@@ -581,12 +582,121 @@ contains
 
     end subroutine cons_to_prim
 
+    subroutine cons_to_prim_edge(sedge, umac, alpha, beta, gam, s_prim_edge, u_prim_edge, mla,the_bc_level)
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
+        ! FIXME: need to import thermal gamma
+        use probin_module, only : gamm_therm
+
+        type(multifab), intent(in) :: sedge(:,:)
+        type(multifab), intent(in) :: umac(:,:)
+        type(multifab), intent(in) :: alpha(:)
+        type(multifab), intent(in) :: beta(:)
+        type(multifab), intent(in) :: gam(:)
+        type(multifab), intent(inout) :: s_prim_edge(:,:)
+        type(multifab), intent(inout) :: u_prim_edge(:,:)
+        type(ml_layout)   , intent(in) :: mla
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
+
+        real(kind=dp_t), pointer ::  sp(:,:,:,:)
+        real(kind=dp_t), pointer ::  up(:,:,:,:)
+        real(kind=dp_t), pointer ::  alphap(:,:,:,:)
+        real(kind=dp_t), pointer ::  betap(:,:,:,:)
+        real(kind=dp_t), pointer ::  gamp(:,:,:,:)
+        real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
+        real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
+
+        real(kind=dp_t) :: pmin, pmax, pbar, u0
+
+        integer :: i,j,k,l,m,n,nlevs,lo(mla%dim),hi(mla%dim),dm,comp
+        logical :: fail
+
+        nlevs = mla%nlevel
+        dm = mla%dim
+
+        do n=1,nlevs
+           do comp=1,dm
+               do m=1,nfabs(sedge(n,comp))
+                   sp => dataptr(sedge(n,comp), m)
+                   up => dataptr(umac(n,comp), m)
+                   alphap => dataptr(alpha(n), m)
+                   betap => dataptr(beta(n), m)
+                   gamp => dataptr(gam(n), m)
+                   s_primp => dataptr(s_prim_edge(n,comp), m)
+                   u_primp => dataptr(u_prim_edge(n,comp), m)
+                   lo =  lwb(get_box(sedge(n,comp), m))
+                   hi =  upb(get_box(sedge(n,comp), m))
+
+                   !print *, 's', sp(:,:,:,rhoh_comp)
+
+                   ! initialise by simply copying - assume rest of the components are unchanged
+                   !s_primp(:,:,:,:) = sp(:,:,:,:)
+
+                   do k = lo(3), hi(3)
+                       do j = lo(2), hi(2)
+                           do i = lo(1), hi(1)
+                               s_primp(i,j,k,:) = sp(i,j,k,:)
+                               !pmin = (Dh - D) * (gamma - 1.) / gamma
+                               !pmax = (gamma - 1.) * Dh
+                               pmin = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / gamm_therm
+                               if (pmin < 0.d0) then
+                                   pmin = 0.d0
+                               endif
+                               pmax = (gamm_therm - 1.d0) * sp(i,j,k,rhoh_comp)
+                               pbar = 0.5d0 * (pmin + pmax)
+
+                               !print *, 'pmax', pmax
+
+                               !print *, 'hi'
+
+                               call Newton_Raphson(pmin, pmax, pbar, root_find_on_me, &
+                               sp(i,j,k,rho_comp), up(i,j,k,:), &
+                               sp(i,j,k,rhoh_comp), alphap(i,j,k,1), &
+                               betap(i,j,k,:), gamp(i,j,k,:), fail)
+
+                               u0 = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / (gamm_therm * pbar)
+
+                               !print *, 'pmax', pmax
+
+                               s_primp(i,j,k,rho_comp) = sp(i,j,k,rho_comp) / u0
+                               s_primp(i,j,k,rhoh_comp) = sp(i,j,k,rhoh_comp) / u0
+                               do l = 0, nspec-1
+                                   s_primp(i,j,k,spec_comp+l) = sp(i,j,k,spec_comp+l) / u0
+                               enddo
+                               u_primp(i,j,k,1) = up(i,j,k,1) * u0
+                           enddo
+                       enddo
+                   enddo
+               enddo
+           enddo
+       enddo
+
+       !print *, 'sprim', s_primp(:,:,:,1)
+       !print *, 'gamm_therm', gamm_therm
+       do comp=1,dm
+           ! fill ghosts
+           call ml_restrict_and_fill(nlevs,s_prim_edge(:,comp),mla%mba%rr,the_bc_level, &
+                                     icomp=rho_comp, &
+                                     bcomp=dm+rho_comp, &
+                                     nc=nscal, &
+                                     ng=s_prim_edge(1,comp)%ng)
+
+           call ml_restrict_and_fill(nlevs,u_prim_edge(:,comp),mla%mba%rr,the_bc_level, &
+                                     icomp=1, &
+                                     bcomp=1, &
+                                     nc=dm, &
+                                     ng=u_prim_edge(1,comp)%ng)
+
+            !print *, 'sprim', s_primp(:,:,:,1)
+        enddo
+
+    end subroutine cons_to_prim_edge
+
     subroutine cons_to_prim_a(s, u, alpha, beta, gam, s_prim,lo,hi,ng_s,ng_u)
         ! Works on arrays
         ! Must fill primitive ghosts after calling this function
         ! Does not convert u as not needed in any of the functions that call
         ! this.
-        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec
         ! FIXME: need to import thermal gamma
         use probin_module, only : gamm_therm
 
@@ -778,7 +888,7 @@ contains
         type(multifab), intent(in) :: u0(:)
         type(multifab), intent(in) :: s_prim(:)
         type(multifab), intent(in) :: u_prim(:)
-        type(ml_layout)   , intent(inout) :: mla
+        type(ml_layout)   , intent(in) :: mla
         type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
         real(kind=dp_t), pointer ::  sp(:,:,:,:)
@@ -829,6 +939,68 @@ contains
 
 
    end subroutine prim_to_cons
+
+   subroutine prim_to_cons_edge(sedge, umac, u0, s_prim_edge, u_prim_edge, mla,the_bc_level)
+       use variables, only: rho_comp, rhoh_comp, spec_comp, nspec,nscal
+
+       type(multifab), intent(inout) :: sedge(:,:)
+       type(multifab), intent(inout) :: umac(:,:)
+       type(multifab), intent(in) :: u0(:)
+       type(multifab), intent(in) :: s_prim_edge(:,:)
+       type(multifab), intent(in) :: u_prim_edge(:,:)
+       type(ml_layout)   , intent(inout) :: mla
+       type(bc_level)    , intent(in   ) :: the_bc_level(:)
+
+       real(kind=dp_t), pointer ::  sp(:,:,:,:)
+       real(kind=dp_t), pointer ::  up(:,:,:,:)
+       real(kind=dp_t), pointer ::  u0p(:,:,:,:)
+       real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
+       real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
+
+       integer :: i,m,n,nlevs,dm,comp
+
+       nlevs = mla%nlevel
+       dm = mla%dim
+
+       do n=1,nlevs
+           do comp=1,dm
+              do m=1,nfabs(sedge(n,comp))
+                  sp => dataptr(sedge(n,comp), m)
+                  up => dataptr(umac(n,comp), m)
+                  u0p => dataptr(u0(n), m)
+                  s_primp => dataptr(s_prim_edge(n,comp), m)
+                  u_primp => dataptr(u_prim_edge(n,comp), m)
+
+                  ! intialise by simply copying - assume rest of the components are unchanged
+                  sp(:,:,:,:) = s_primp(:,:,:,:)
+
+                  sp(:,:,:,rho_comp) = s_primp(:,:,:,rho_comp) * u0p(:,:,:,1)
+                  sp(:,:,:,rhoh_comp) = s_primp(:,:,:,rhoh_comp) * u0p(:,:,:,1)
+                  do i = 0, nspec-1
+                      sp(:,:,:,spec_comp+i) = s_primp(:,:,:,spec_comp+i) * u0p(:,:,:,1)
+                  enddo
+                  up(:,:,:,1) = u_primp(:,:,:,1) / u0p(:,:,:,1)
+              enddo
+          enddo
+      enddo
+
+      do comp=1,dm
+          ! fill ghosts
+          call ml_restrict_and_fill(nlevs,sedge(:,comp),mla%mba%rr,the_bc_level, &
+                                    icomp=rho_comp, &
+                                    bcomp=dm+rho_comp, &
+                                    nc=nscal, &
+                                    ng=sedge(1,comp)%ng)
+
+          call ml_restrict_and_fill(nlevs,umac(:,comp),mla%mba%rr,the_bc_level, &
+                                    icomp=1, &
+                                    bcomp=1, &
+                                    nc=dm, &
+                                    ng=umac(1,comp)%ng)
+     enddo
+
+
+  end subroutine prim_to_cons_edge
 
    subroutine prim_to_cons_a(s, u0, s_prim)
        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec,nscal

@@ -60,7 +60,7 @@ contains
 
   subroutine react_state(mla,tempbar_init,sold,snew,D_omegadot,rho_Hnuc,&
                          rho_Hext,p0,dt,dx,the_bc_level,chrls,u,alpha,beta, &
-                         gam)
+                         gam,u0)
 
     use probin_module, only: use_tfromp, do_heating, do_burning
     use variables, only: temp_comp, rhoh_comp, rho_comp,nscal
@@ -69,7 +69,7 @@ contains
     use rhoh_vs_t_module      , only : makeTfromRhoP, makeTfromRhoH
     use bl_constants_module   , only: ZERO
     use ml_restrict_fill_module
-    use metric_module, only: cons_to_prim
+    use metric_module, only: cons_to_prim, prim_to_cons
 
     type(ml_layout), intent(in   ) :: mla
     type(multifab) , intent(in   ) :: sold(:)
@@ -86,6 +86,7 @@ contains
     type(multifab), intent(in) :: alpha(:)
     type(multifab), intent(in) :: beta(:)
     type(multifab), intent(in) :: gam(:)
+    type(multifab), intent(in) :: u0(:)
 
     ! Local
     type(bl_prof_timer), save :: bpt
@@ -180,6 +181,14 @@ contains
     else
        call makeTfromRhoH(s_prim,p0,mla,the_bc_level,dx)
     end if
+
+    ! convert back to conservative
+    call prim_to_cons(s_prim,u_prim,u0,s_prim,u_prim,mla,the_bc_level)
+
+    ! copy back
+    do n=1,nlevs
+        call multifab_copy_c(snew(n),temp_comp,s_prim(n),temp_comp,1,nghost(snew(n)))
+    enddo
 
     ! destroy stuff
     call destroy(bpt)

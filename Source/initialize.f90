@@ -1444,6 +1444,13 @@ contains
        ! call eos with r,p as input to recompute T,h
        call makeTHfromRhoP(s_prim,p0_old,the_bc_tower%bc_tower_array,mla,dx)
 
+       ! only update the temp comp by saving converted to s_prim then copying temp back across
+       call prim_to_cons(s_prim, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+       do n=1,nlevs
+          call multifab_copy_c(sold(n),temp_comp,s_prim(n),temp_comp,1,nghost(sold(n)))
+       end do
+
        ! set rhoh0 to be the average
        call average(mla,sold,Dh0_old,dx,rhoh_comp)
     end if

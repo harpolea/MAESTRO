@@ -304,7 +304,7 @@ contains
     end do
 
     call react_state(mla,tempbar_init,sold,s1,rho_omegadot1,rho_Hnuc1,rho_Hext,p0_old,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam)
+                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam,u0)
 
     do n=1,nlevs
        call destroy(rho_omegadot1(n))
@@ -800,7 +800,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam)
+                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam,u0)
 
     do n=1,nlevs
        call destroy(s2(n))
@@ -1381,7 +1381,7 @@ contains
 
     ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
-                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam)
+                     the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam,u0)
 
     do n=1,nlevs
        call destroy(s2(n))

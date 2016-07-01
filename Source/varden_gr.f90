@@ -1068,6 +1068,13 @@ subroutine varden()
               call makeTfromRhoH(s_prim,p0_old,mla,the_bc_tower%bc_tower_array,dx)
            end if
 
+           ! only update the temp comp by saving converted to s_prim then copying temp back across
+           call prim_to_cons(s_prim, u_prim, u0, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+           do n=1,nlevs
+              call multifab_copy_c(sold(n),temp_comp,s_prim(n),temp_comp,1,nghost(sold(n)))
+           end do
+
            ! force tempbar to be the average of temp
            call average(mla,sold,tempbar,dx,temp_comp)
 

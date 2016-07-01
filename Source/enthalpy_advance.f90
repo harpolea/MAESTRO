@@ -38,7 +38,8 @@ contains
     use pred_parameters
     use modify_scal_force_module
     use convert_rhoX_to_X_module
-    use metric_module, only: cons_to_prim, prim_to_cons
+    use metric_module, only: cons_to_prim, prim_to_cons, cons_to_prim_edge, &
+                             prim_to_cons_edge
 
     type(ml_layout), intent(inout) :: mla
     integer        , intent(in   ) :: which_step
@@ -78,6 +79,7 @@ contains
     type(multifab) :: h0mac_old(mla%nlevel,mla%dim)
     type(multifab) :: h0mac_new(mla%nlevel,mla%dim)
     type(multifab) :: s_prim_edge(mla%nlevel,mla%dim)
+    type(multifab) :: u_prim_edge(mla%nlevel,mla%dim)
     type(multifab) :: s_prim(mla%nlevel)
     type(multifab) :: u_prim(mla%nlevel)
 
@@ -325,35 +327,41 @@ contains
        ng_s = nghost(sold(n))
        do comp=1,dm
            call multifab_build_edge(s_prim_edge(n,comp),mla%la(n),nscal, ng_s,comp)
+           call multifab_build_edge(u_prim_edge(n,comp),mla%la(n),dm, ng_s,comp)
        enddo
        call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
        call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
     end do
-    call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
+    !call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
 
     if (enthalpy_pred_type .eq. predict_rhoh) then
        ! use the conservative form of the prediction
        if (bds_type .eq. 0) then
-          call make_edge_scal(s_prim,s_prim_edge,umac,scal_force, &
+          call make_edge_scal(sold,sedge,umac,scal_force, &
                               dx,dt,is_vel,the_bc_level, &
                               pred_comp,dm+pred_comp,1,.true.,mla)
        else if (bds_type .eq. 1) then
-          call bds(s_prim,s_prim_edge,umac,scal_force, &
+          call bds(sold,sedge,umac,scal_force, &
                    dx,dt,is_vel,the_bc_level, &
                    pred_comp,dm+pred_comp,1,.true.,mla)
        end if
     else
        ! use the advective form of the prediction
        if (bds_type .eq. 0) then
-          call make_edge_scal(s_prim,s_prim_edge,umac,scal_force, &
+          call make_edge_scal(sold,sedge,umac,scal_force, &
                               dx,dt,is_vel,the_bc_level, &
                               pred_comp,dm+pred_comp,1,.false.,mla)
        else if (bds_type .eq. 1) then
-          call bds(s_prim,s_prim_edge,umac,scal_force, &
+          call bds(sold,sedge,umac,scal_force, &
                    dx,dt,is_vel,the_bc_level, &
                    pred_comp,dm+pred_comp,1,.false.,mla)
        end if
     end if
+    call cons_to_prim(sold, uold, alpha, beta, gam, &
+                           s_prim, u_prim, mla,the_bc_level)
+    ! TODO: should probably use alpha, beta and gamma on the edges here
+    call cons_to_prim_edge(sedge, umac, alpha, beta, gam, &
+                           s_prim_edge, u_prim_edge, mla,the_bc_level)
 
     ! Compute enthalpy edge states if we were predicting temperature.  This
     ! needs to be done after the state was returned to the full state.
@@ -363,6 +371,19 @@ contains
        call makeHfromRhoT_edge(u_prim,s_prim_edge,rho0_old,rhoh0_old,tempbar,rho0_edge_old, &
                                rhoh0_edge_old,t0_edge_old,rho0_new,rhoh0_new,tempbar, &
                                rho0_edge_new,rhoh0_edge_new,t0_edge_new,the_bc_level,dx,mla)
+
+        call prim_to_cons_edge(s_prim_edge,u_prim_edge,u0,s_prim_edge,u_prim_edge,mla,the_bc_level)
+
+        ! copy rhoh component back
+
+        do n=1,nlevs
+           ng_s = nghost(sold(n))
+           do comp=1,dm
+               call multifab_copy_c(sedge(n,comp), rhoh_comp, &
+                    s_prim_edge(n,comp), rhoh_comp,1,ng_s)
+            enddo
+        enddo
+
     end if
 
     !**************************************************************************
@@ -416,6 +437,7 @@ contains
                 call destroy(Dh0mac_old(n,comp))
                 call destroy(h0mac_old(n,comp))
                 call destroy(s_prim_edge(n,comp))
+                call destroy(u_prim_edge(n,comp))
             enddo
             call destroy(s_prim(n))
             call destroy(u_prim(n))
@@ -471,6 +493,7 @@ contains
                 call destroy(Dh0mac_new(n,comp))
                 call destroy(h0mac_new(n,comp))
                 call destroy(s_prim_edge(n,comp))
+                call destroy(u_prim_edge(n,comp))
             enddo
             call destroy(s_prim(n))
             call destroy(u_prim(n))
