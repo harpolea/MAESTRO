@@ -10,6 +10,7 @@ module divu_iter_module
   use bl_constants_module
   use ml_layout_module
   use define_bc_module
+  use metric_module
 
   implicit none
 
@@ -72,7 +73,7 @@ contains
     real(kind=dp_t), intent(in   ) :: u0_1d(:,0:)
 
     ! local
-    integer        :: n,ng_s,nlevs
+    integer        :: n,ng_s,nlevs,dm
     real(dp_t)     :: halfdt,dt_temp,dt_hold
     real(dp_t)     :: eps_divu
 
@@ -106,6 +107,7 @@ contains
     call build(bpt, "divu_iter")
 
     nlevs = mla%nlevel
+    dm = mla%dim
 
     etarho_ec = ZERO
     Sbar = ZERO
@@ -161,7 +163,7 @@ contains
        call multifab_build(delta_gamma1(n),      mla%la(n), 1, 0)
     end do
 
-    call cons_to_prim(snew, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+    call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
     call make_S(Source_old,delta_gamma1_term,delta_gamma1, &
                 s_prim, u_prim, &
