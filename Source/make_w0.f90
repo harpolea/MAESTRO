@@ -420,8 +420,9 @@ contains
     F   = ZERO
     u   = ZERO
 
-    !$OMP PARALLEL DO PRIVATE(r,dpdr)
     print * , 'base cutoff coord', base_cutoff_density_coord(nlevs_radial)
+
+    !$OMP PARALLEL DO PRIVATE(r,dpdr)
     do r=1,base_cutoff_density_coord(nlevs_radial)
        A(r) = gamma1bar_nph_fine(r-1) * p0_nph_fine(r-1)
        A(r) = A(r) / dr(nlevs_radial)**2

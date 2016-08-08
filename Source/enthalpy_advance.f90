@@ -323,11 +323,13 @@ contains
        call cell_to_edge(rhoh0_new,rhoh0_edge_new)
     end if
 
+    ! FIXME: I think only need the edge-based primitive stuff here?
+
     do n=1,nlevs
        ng_s = nghost(sold(n))
        do comp=1,dm
            call multifab_build_edge(s_prim_edge(n,comp),mla%la(n),nscal, ng_s,comp)
-           call multifab_build_edge(u_prim_edge(n,comp),mla%la(n),dm, ng_s,comp)
+           call multifab_build_edge(u_prim_edge(n,comp),mla%la(n),1, ng_s,comp)
        enddo
        call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
        call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
@@ -360,7 +362,7 @@ contains
     call cons_to_prim(sold, uold, alpha, beta, gam, &
                            s_prim, u_prim, mla,the_bc_level)
     ! TODO: should probably use alpha, beta and gamma on the edges here
-    call cons_to_prim_edge(sedge, umac, alpha, beta, gam, &
+    call cons_to_prim_edge(sedge, umac, uold, alpha, beta, gam, &
                            s_prim_edge, u_prim_edge, mla,the_bc_level)
 
     ! Compute enthalpy edge states if we were predicting temperature.  This
@@ -372,6 +374,7 @@ contains
                                rhoh0_edge_old,t0_edge_old,rho0_new,rhoh0_new,tempbar, &
                                rho0_edge_new,rhoh0_edge_new,t0_edge_new,the_bc_level,dx,mla)
 
+        ! FIXME: do I need to use u0 on the edge here???
         call prim_to_cons_edge(s_prim_edge,u_prim_edge,u0,s_prim_edge,u_prim_edge,mla,the_bc_level)
 
         ! copy rhoh component back
@@ -436,11 +439,7 @@ contains
                 call destroy(D0mac_old(n,comp))
                 call destroy(Dh0mac_old(n,comp))
                 call destroy(h0mac_old(n,comp))
-                call destroy(s_prim_edge(n,comp))
-                call destroy(u_prim_edge(n,comp))
             enddo
-            call destroy(s_prim(n))
-            call destroy(u_prim(n))
           end do
        end if
 
@@ -492,15 +491,20 @@ contains
                 call destroy(D0mac_new(n,comp))
                 call destroy(Dh0mac_new(n,comp))
                 call destroy(h0mac_new(n,comp))
-                call destroy(s_prim_edge(n,comp))
-                call destroy(u_prim_edge(n,comp))
             enddo
-            call destroy(s_prim(n))
-            call destroy(u_prim(n))
           end do
        end if
 
     end if
+
+    do n=1,nlevs
+       do comp=1,dm
+          call destroy(s_prim_edge(n,comp))
+          call destroy(u_prim_edge(n,comp))
+      enddo
+      call destroy(s_prim(n))
+      call destroy(u_prim(n))
+    end do
 
     do n=1,nlevs
        call setval(scal_force(n),ZERO,all=.true.)

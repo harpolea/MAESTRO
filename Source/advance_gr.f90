@@ -283,9 +283,6 @@ contains
     !call average(mla,u0,u0_1d,dx,1)
     !print *, 'u0_1d by averaging: ', u0_1d
     call calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_tower%bc_tower_array, dx)
-    !print *, 'u0_1d by w0: ', u0_1d
-
-    !print *, 'Dh0_old', Dh0_old
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! STEP 1 -- react the full state and then base state through dt/2
@@ -578,7 +575,7 @@ contains
        ! temperature will be overwritten later after enthalpy advance
        call multifab_copy_c(s2(n), temp_comp, s1(n), temp_comp, 1, nghost(sold(n)))
        ! copy across Dh
-       call multifab_copy_c(s2(n), rhoh_comp, s1(n), rhoh_comp, 1, nghost(sold(n)))
+       !call multifab_copy_c(s2(n), rhoh_comp, s1(n), rhoh_comp, 1, nghost(sold(n)))
     end do
 
     if (parallel_IOProcessor() .and. verbose .ge. 1) then
@@ -632,13 +629,10 @@ contains
 
     !print *, 'sp', sp(5,5,:,:)
 
-    ! FIXME; I think this should go after the enthalpy update in 4H
-    ! 4D
-
     ! Correct the base state by "averaging"
     if (use_etarho .and. evolve_base_state) then
-       call average(mla,s2,Dh0_new,dx,rhoh_comp)
-       call compute_cutoff_coords(Dh0_new)
+       call average(mla,s2,D0_new,dx,rho_comp)
+       call compute_cutoff_coords(D0_new)
     end if
 
     ! 4E
@@ -648,7 +642,9 @@ contains
        ! set new p0 through HSE
        p0_new = p0_old
 
-       ! FIXME: need to recalculate u0 at some point
+       call calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_tower%bc_tower_array, dx)
+
+       ! FIXED: need to recalculate u0 at some point
        call enforce_TOV(Dh0_new,p0_new,u0_1d)
 
        call make_dpdr_cell(dpdr_cell_new,Dh0_new,p0_new,u0_1d)
@@ -718,6 +714,12 @@ contains
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
                           tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam,u0)
 
+   ! Correct the base state by "averaging"
+    if (use_etarho .and. evolve_base_state) then
+       call average(mla,s2,Dh0_new,dx,rhoh_comp)
+       call compute_cutoff_coords(Dh0_new)
+    end if
+
     do n = 1, nlevs
        do comp = 1,dm
           call destroy(sedge(n,comp))
@@ -753,7 +755,7 @@ contains
     ! pass temperature through for seeding the temperature update eos call
     ! pi goes along for the ride
     do n=1,nlevs
-       call multifab_copy_c(s2(n), 1, s1(n), 1, nscal, nghost(sold(n)))
+       !call multifab_copy_c(s2(n), 1, s1(n), 1, nscal, nghost(sold(n)))
        call multifab_copy_c(s2(n),temp_comp,s1(n),temp_comp,1,nghost(sold(n)))
        call multifab_copy_c(s2(n),pi_comp,  s1(n),pi_comp,  1,nghost(sold(n)))
     end do
@@ -1149,7 +1151,7 @@ contains
        ! temperature will be overwritten later after enthalpy advance
        call multifab_copy_c(s2(n), temp_comp, s1(n), temp_comp, 1, nghost(sold(n)))
        ! copy across Dh
-       call multifab_copy_c(s2(n), rhoh_comp, s1(n), rhoh_comp, 1, nghost(sold(n)))
+       !call multifab_copy_c(s2(n), rhoh_comp, s1(n), rhoh_comp, 1, nghost(sold(n)))
 
        call setval(etarhoflux(n),ZERO,all=.true.)
     end do
@@ -1207,8 +1209,8 @@ contains
 
     ! Correct the base state using "averaging"
     if (use_etarho .and. evolve_base_state) then
-       call average(mla,s2,Dh0_new,dx,rhoh_comp)
-       call compute_cutoff_coords(Dh0_new)
+       call average(mla,s2,D0_new,dx,rho_comp)
+       call compute_cutoff_coords(D0_new)
     end if
 
     if (evolve_base_state) then
@@ -1216,11 +1218,12 @@ contains
        D0_nph = HALF*(D0_old+D0_new)
        Dh0_nph = HALF*(Dh0_old+Dh0_new)
        !p0_nph = HALF*(p0_old+p0_new)
+       ! next line has moved to if statement below
        !call make_dpdr_cell(dpdr_cell_nph,Dh0_nph,p0_nph,u0_1d)
     else
        dpdr_cell_new = dpdr_cell_old
        D0_nph = D0_old
-       Dh0_nph = HALF*(Dh0_old+Dh0_new)
+       Dh0_nph = Dh0_old
        dpdr_cell_nph = dpdr_cell_old
     end if
 
@@ -1242,7 +1245,8 @@ contains
            ! TODO: check need nph stuff here?
           call make_psi_planar(etarho_cc,psi,dpdr_cell_nph,D0_nph,u0_1d)
        else
-          p0_nph = HALF*(p0_old+p0_new)
+          ! This was just calculated above
+          !p0_nph = HALF*(p0_old+p0_new)
 
           do n=1,nlevs
              call multifab_build(gamma1(n), mla%la(n), 1, 0)
@@ -1288,6 +1292,12 @@ contains
     call enthalpy_advance(mla,2,uold,s1,s2,sedge,sflux,scal_force,thermal1,umac,w0,w0mac, &
                           D0_old,Dh0_old,D0_new,Dh0_new,p0_old,p0_new, &
                           tempbar,psi,dx,dt,the_bc_tower%bc_tower_array,u0_1d,alpha,beta,gam,u0)
+
+    ! Correct the base state using "averaging"
+    if (use_etarho .and. evolve_base_state) then
+      call average(mla,s2,Dh0_new,dx,rhoh_comp)
+      call compute_cutoff_coords(Dh0_new)
+    end if
 
     do n=1,nlevs
        do comp = 1,dm
@@ -1344,14 +1354,40 @@ contains
 
     misc_time_start = parallel_wtime()
 
+    do n = 1, nlevs
+        do i = 1, nfabs(s2(n))
+            sp => dataptr(s2(n), i)
+        enddo
+    enddo
+
+    print *, 'sp', sp(5,5,:,rho_comp)
+
+    do n = 1, nlevs
+        do i = 1, nfabs(u0(n))
+            sp => dataptr(u0(n), i)
+        enddo
+    enddo
+
+    print *, 'sp', sp(5,5,:,1)
+
+
     ! pass temperature through for seeding the temperature update eos call
     ! pi just goes along for the ride too
     do n=1,nlevs
-       call multifab_copy_c(s2(n), 1, s1(n), 1, nscal, nghost(sold(n)))
+       ! FIXME: Is this why nothing is evolving???
+       !call multifab_copy_c(s2(n), 1, s1(n), 1, nscal, nghost(sold(n)))
        call multifab_copy_c(s2(n),temp_comp,s1(n),temp_comp,1,nghost(sold(n)))
        call multifab_copy_c(s2(n),pi_comp,  s1(n),pi_comp,  1,nghost(sold(n)))
     end do
     call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
+
+    do n = 1, nlevs
+        do i = 1, nfabs(s_prim(n))
+            sp => dataptr(s_prim(n), i)
+        enddo
+    enddo
+
+    print *, 'sp', sp(5,5,:,rho_comp)
 
     ! now update temperature
     if (use_tfromp) then
@@ -1388,7 +1424,6 @@ contains
        call multifab_build(rho_Hext(n), mla%la(n), 1, 0)
     end do
 
-    ! FIXME: need to pass chrls, u to this
     call react_state(mla,tempbar_init,s2,snew,rho_omegadot2,rho_Hnuc2,rho_Hext,p0_new,halfdt,dx, &
                      the_bc_tower%bc_tower_array,chrls,uold,alpha,beta,gam,u0)
 
@@ -1643,7 +1678,7 @@ contains
     do n=1,nlevs
        call multifab_build(Dhu0(n), mla%la(n), 2, 0)
        call setval(Dhu0(n), ONE, all=.true.)
-       print *, 'number of ghosts', nghost(Dhu0(n))
+       !print *, 'number of ghosts', nghost(Dhu0(n))
        call multifab_copy_c(Dhu0(n),rhoh_comp,Dh_half(n),rhoh_comp,1,nghost(Dhu0(n)))
        call multifab_mult_mult_c(Dhu0(n),rhoh_comp,u0(n),1,1, &
                                  nghost(Dhu0(n)))

@@ -1053,11 +1053,11 @@ subroutine varden()
            call enforce_TOV(Dh0_old,p0_old,u0_1d)
 
            !!!! This needs the primitive variables
-           do n=1,nlevs
-              ng_s = nghost(sold(n))
-              call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
-              call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
-           end do
+           !do n=1,nlevs
+            !  ng_s = nghost(sold(n))
+             ! call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+              !call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+           !end do
            call cons_to_prim(sold, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
            if (use_tfromp) then
@@ -1510,6 +1510,7 @@ subroutine varden()
      call destroy(beta(n))
      call destroy(gam(n))
      call destroy(u0(n))
+     call destroy(W(n))
      call destroy(u_prim(n))
      call destroy(s_prim(n))
   end do
@@ -1539,10 +1540,10 @@ subroutine varden()
   call runtime_close()
 
   deallocate(uold,sold,pi,gpi,dSdt,Source_old,Source_new,rho_omegadot2, &
-             rho_Hnuc2,rho_Hext,tag_mf,alpha,beta,gam,u0)
+             rho_Hnuc2,rho_Hext,tag_mf,alpha,beta,gam,u0,W)
   deallocate(thermal2,dx)
-  deallocate(div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold,s0_init,D0_old)
-  deallocate(Dh0_old,D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,etarho_ec,etarho_cc)
-  deallocate(psi,tempbar,tempbar_init,dpdr_cell,chrls)
+  deallocate(div_coeff_old,div_coeff_new,gamma1bar,gamma1bar_hold,s0_init,sprim0_init,D0_old)
+  deallocate(Dh0_old,D0_new,Dh0_new,p0_init,p0_old,p0_new,w0,u0_1d,etarho_ec,etarho_cc)
+  deallocate(psi,tempbar,tempbar_init,dpdr_cell,chrls,u_prim,s_prim)
 
 end subroutine varden

@@ -224,10 +224,16 @@ contains
 
                 else ! r >= anelastic_cutoff
 
-                   div_coeff(n,r) = div_coeff(n,r-1) * ((D0(n,r)/u0(n,r))/(D0(n,r-1)/u0(n,r-1)))
-                   beta0_edge(n,r+1) = 2.d0*div_coeff(n,r) - beta0_edge(n,r)
+                    if (r == 0 ) then
+                        div_coeff(n,r) = 1.0d0
+                    else
+                        div_coeff(n,r) = div_coeff(n,r-1) * ((D0(n,r)/u0(n,r))/(D0(n,r-1)/u0(n,r-1)))
 
-                endif
+                    end if
+
+                    beta0_edge(n,r+1) = 2.d0*div_coeff(n,r) - beta0_edge(n,r)
+
+                end if
 
              end do
 

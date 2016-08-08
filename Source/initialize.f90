@@ -1107,11 +1107,13 @@ contains
 
     ! now that we have dr and nr we can fill initial state
     if (spherical .eq. 1) then
-       call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:),u0_1d(1,:))
+       !call init_base_state(1,model_file,sprim0_init(1,:,:),p0_init(1,:),dx(max_levs,:),u0_1d(1,:))
+       call init_base_state(1,model_file,s0_init(1,:,:),p0_init(1,:),dx(max_levs,:),u0_1d(1,:))
     else
           ! init_base_state requires loop backwards over levels
        do n=max_levs,1,-1
-          call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:),u0_1d(n,:))
+          !call init_base_state(n,model_file,sprim0_init(n,:,:),p0_init(n,:),dx(n,:),u0_1d(n,:))
+          call init_base_state(n,model_file,s0_init(n,:,:),p0_init(n,:),dx(n,:),u0_1d(n,:))
        end do
     end if
 
@@ -1120,7 +1122,7 @@ contains
     !print *, 'u0', u0_1d
 
     ! This will be a trivial thing at this point as u0_1d = 1 here.
-    call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
+    !call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
 
     ! Initialize bc's
     call initialize_bc(the_bc_tower,max_levs,pmask)
@@ -1326,13 +1328,13 @@ contains
 
     allocate(s_prim(nlevs),u_prim(nlevs))
 
-    do n = 1,nlevs
-       call multifab_build(      u_prim(n), mla%la(n),    dm, nghost(uold(n)))
-       call multifab_build(      s_prim(n), mla%la(n), nscal, nghost(sold(n)))
+    !do n = 1,nlevs
+     !  call multifab_build(      u_prim(n), mla%la(n),    dm, nghost(uold(n)))
+      ! call multifab_build(      s_prim(n), mla%la(n), nscal, nghost(sold(n)))
 
-       call setval(    s_prim(n), ZERO, all=.true.)
-       call setval(    u_prim(n), ZERO, all=.true.)
-    end do
+       !call setval(    s_prim(n), ZERO, all=.true.)
+       !call setval(    u_prim(n), ZERO, all=.true.)
+    !end do
 
     ! build states
     do n = 1,nlevs
@@ -1391,7 +1393,8 @@ contains
     0:extent(mla%mba%pd(max_levs),1),0:extent(mla%mba%pd(max_levs),2),0:nr_fine-1))
     call christoffels(alpha,beta,gam,chrls,mla)
 
-    call initveldata(uold,sprim0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+    !call initveldata(uold,sprim0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
+    call initveldata(uold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
     call calcW(alpha, beta, gam, uold, mla, W,the_bc_tower%bc_tower_array)
 
@@ -1399,11 +1402,14 @@ contains
     ! set u0_1d to be average
     call average(mla,u0,u0_1d,dx,1)
 
-    call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
-
     call initscalardata(sold,s0_init,p0_init,dx,the_bc_tower%bc_tower_array,mla)
 
+    !call prim_to_cons_1d(s0_init,u0_1d,sprim0_init)
+    call prim_to_cons_1d(s0_init,u0_1d,s0_init)
 
+    call prim_to_cons(sold,uold,u0,sold,uold,mla,the_bc_tower%bc_tower_array)
+
+    print *, 'D0_old', s0_init(:,:,rho_comp)
 
     p0_old       = p0_init
     D0_old     = s0_init(:,:,rho_comp)
@@ -1451,8 +1457,9 @@ contains
           call multifab_copy_c(sold(n),temp_comp,s_prim(n),temp_comp,1,nghost(sold(n)))
        end do
 
-       ! set rhoh0 to be the average
+       ! set rhoh0, rho0 to be the average
        call average(mla,sold,Dh0_old,dx,rhoh_comp)
+       call average(mla,sold,D0_old,dx,rho_comp)
     end if
 
     ! set tempbar to be the average
@@ -1464,6 +1471,8 @@ contains
         call destroy(u_prim(n))
         call destroy(s_prim(n))
     enddo
+
+    deallocate(u_prim, s_prim)
 
   end subroutine initialize_with_adaptive_grids
 

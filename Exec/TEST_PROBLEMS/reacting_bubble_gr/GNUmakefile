@@ -1,6 +1,6 @@
 NDEBUG :=
-MPI    :=
-OMP    :=
+MPI    := 
+OMP    := 
 
 SDC :=
 

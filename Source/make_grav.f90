@@ -58,7 +58,6 @@ contains
           !print *, 'p0(n,r) * u0_1d(n,r)', p0(:,:) * u0_1d(:,:)
           !print *, 'dpdr cell', dpdr_cell
 
-
     else  ! spherical = 1
 
        allocate(m(1,0:nr_fine-1))

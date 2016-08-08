@@ -469,7 +469,7 @@ contains
 
     if ( do_eos_h_above_cutoff .and. (nstart .eq. rhoh_comp) ) then
 
-        u_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:) = u(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
+       u_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:) = u(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
 
        s_prim(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:) = snew(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),:)
 
@@ -494,11 +494,17 @@ contains
 
                    pt_index(:) = (/i, j, k/)
 
+                   !write(*,*) 'eos_state%rho: ', eos_state%rho
+                   ! FIXME: this is a hack?
+                   eos_state%rho = base_cutoff_density
+
                    ! (rho,P) --> T,h
                    call eos(eos_input_rp, eos_state, pt_index)
 
                    !snew(i,j,k,rhoh_comp) = snew(i,j,k,rho_comp) * eos_state%h
-                   s_prim(i,j,k,rhoh_comp) = s_prim(i,j,k,rho_comp) * eos_state%h
+                   !s_prim(i,j,k,rhoh_comp) = s_prim(i,j,k,rho_comp) * eos_state%h
+                   ! FIXME: is this right?
+                   s_prim(i,j,k,rhoh_comp) = eos_state%rho * eos_state%h
 
                 end if
 
