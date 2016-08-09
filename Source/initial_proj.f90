@@ -22,7 +22,8 @@ module initial_proj_module
 contains
 
   subroutine initial_proj(uold,sold,pi,gpi,Source_old,normal,hgrhs,thermal, &
-                          div_coeff_old,p0,gamma1bar,dx,the_bc_tower,mla,u0)
+                          div_coeff_old,p0,gamma1bar,dx,the_bc_tower,mla,u0,&
+                          alpha,beta,gam)
 
     use variables, only: foextrap_comp, rhoh_comp
     use network, only: nspec
@@ -54,6 +55,9 @@ contains
     type(bc_tower) , intent(in   ) :: the_bc_tower
     type(ml_layout), intent(inout) :: mla
     type(multifab ), intent(in   ) :: u0(:)
+    type(multifab),  intent(inout) :: gam(:)
+    type(multifab),  intent(inout) :: alpha(:)
+    type(multifab),  intent(inout) :: beta(:)
 
     ! local
     integer    :: n,nlevs
@@ -97,7 +101,8 @@ contains
           call multifab_build(pcoeff(n),  mla%la(n), 1,     1)
        end do
 
-       call make_thermal_coeffs(sold,Tcoeff,hcoeff,Xkcoeff,pcoeff)
+       call make_thermal_coeffs(sold,uold,Tcoeff,hcoeff,Xkcoeff,pcoeff, &
+            mla,alpha,beta,gam,the_bc_tower%bc_tower_array)
 
        call make_explicit_thermal(mla,dx,thermal,sold,Tcoeff,hcoeff,Xkcoeff,pcoeff, &
                                   p0,the_bc_tower)

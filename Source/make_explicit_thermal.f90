@@ -12,7 +12,7 @@ module make_explicit_thermal_module
 
   public :: make_explicit_thermal, make_thermal_coeffs
 
-contains 
+contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Compute the quantity: thermal = del dot kappa grad T
@@ -100,7 +100,7 @@ contains
        ! applyop to compute resid = del dot Tcoeff grad T
        call cc_applyop(mla,resid,phi,alpha,beta,dx,the_bc_tower,dm+rhoh_comp, &
                        stencil_order)
-     
+
        do n=1,nlevs
           call destroy(phi(n))
           call destroy(alpha(n))
@@ -125,7 +125,7 @@ contains
        ! compute thermal = del dot ( hcoeff grad h) -
        !             sum_k del dot (Xkcoeff grad X_k) -
        !                   del dot ( pcoeff grad p_0)
-       
+
        do n=1,nlevs
           call multifab_build(phi(n),  mla%la(n), 1,  1)
           do i = 1,dm
@@ -146,11 +146,11 @@ contains
           call multifab_build(resid(n), mla%la(n), 1, 0)
           call setval(alpha(n), ZERO, all=.true.)
        end do
-       
+
        ! applyop to compute resid = del dot hcoeff grad h
        call cc_applyop(mla,resid,phi,alpha,beta,dx,the_bc_tower,dm+rhoh_comp, &
                        stencil_order)
-       
+
        ! add residual to thermal
        do n=1,nlevs
           call multifab_plus_plus_c(thermal(n),1,resid(n),1,1,0)
@@ -165,11 +165,11 @@ contains
           end do
 
           call put_data_on_faces(mla,Xkcoeff,comp,beta,.true.)
-          
+
           ! applyop to compute resid = del dot Xkcoeff grad X_k
           call cc_applyop(mla,resid,phi,alpha,beta,dx,the_bc_tower,dm+spec_comp+comp-1, &
                           stencil_order)
-          
+
           ! add residual to thermal
           do n=1,nlevs
              call multifab_plus_plus_c(thermal(n),1,resid(n),1,1,0)
@@ -184,11 +184,11 @@ contains
        ! applyop to compute resid = del dot pcoeff grad p0
        call cc_applyop(mla,resid,phi,alpha,beta,dx,the_bc_tower,foextrap_comp, &
                        stencil_order)
-       
+
        do n=1,nlevs
           call destroy(phi(n))
           call destroy(alpha(n))
-          do i = 1,dm 
+          do i = 1,dm
              call destroy(beta(n,i))
           end do
        end do
@@ -197,29 +197,40 @@ contains
        do n=1,nlevs
           call multifab_plus_plus_c(thermal(n),1,resid(n),1,1,0)
        enddo
-       
+
        do n = 1,nlevs
           call destroy(resid(n))
        enddo
 
     endif ! end temp_diffusion_formulation logic
-    
+
     call destroy(bpt)
-    
+
   end subroutine make_explicit_thermal
 
-  subroutine make_thermal_coeffs(s,Tcoeff,hcoeff,Xkcoeff,pcoeff)
+  subroutine make_thermal_coeffs(s,u,Tcoeff,hcoeff,Xkcoeff,pcoeff,mla, alpha, beta, gam, the_bc_level)
+
+    use metric_module, only: cons_to_prim
+    use define_bc_module   , only: bc_tower
+    use ml_layout_module   , only: ml_layout
+    use variables, only: nscal
 
     ! create the coefficients for grad{T}, grad{h}, grad{X_k}, and grad{p_0}
-    ! for the thermal diffusion term in the enthalpy equation.  
+    ! for the thermal diffusion term in the enthalpy equation.
     !
     ! note: we explicitly fill the ghostcells by looping over them directly
     ! in the _2d and _3d routines below.
     type(multifab) , intent(in   ) :: s(:)
+    type(multifab) , intent(in   ) :: u(:)
     type(multifab) , intent(inout) :: Tcoeff(:)
     type(multifab) , intent(inout) :: hcoeff(:)
     type(multifab) , intent(inout) :: Xkcoeff(:)
     type(multifab) , intent(inout) :: pcoeff(:)
+    type(ml_layout), intent(inout) :: mla
+    type(multifab), intent(in) :: alpha(:)
+    type(multifab), intent(in) :: beta(:)
+    type(multifab), intent(in) :: gam(:)
+    type(bc_level)    , intent(in   ) :: the_bc_level(:)
 
     ! local
     integer :: n,i,dm,nlevs
@@ -231,6 +242,9 @@ contains
     real(kind=dp_t), pointer    :: Xkcoeffp(:,:,:,:),pcoeffp(:,:,:,:)
 
     type(bl_prof_timer), save :: bpt
+
+    type(multifab) :: s_prim(mla%nlevel)
+    type(multifab) :: u_prim(mla%nlevel)
 
 999 format('... Level ', i1, ' create thermal coeffs:')
 
@@ -245,15 +259,24 @@ contains
     ng_X = nghost(Xkcoeff(1))
     ng_p = nghost(pcoeff(1))
 
-    ! create Tcoeff = -kth, 
-    !        hcoeff = -kth/cp, 
-    !        Xkcoeff = xik*kth/cp, 
+    do n=1,nlevs
+       call multifab_build(s_prim(n), mla%la(n), nscal, ng_s)
+       call multifab_build(u_prim(n), mla%la(n), dm, ng_s)
+    end do
+
+    ! create Tcoeff = -kth,
+    !        hcoeff = -kth/cp,
+    !        Xkcoeff = xik*kth/cp,
     !        pcoeff = hp*kth/cp
+
+    call cons_to_prim(s, u, alpha, beta, gam, s_prim, u_prim, mla, the_bc_level)
+
     do n=1,nlevs
        if (parallel_IOProcessor()) write (6, 999) n
 
        do i=1,nfabs(s(n))
-          sp       => dataptr(s(n),i)
+          !sp       => dataptr(s(n),i)
+          sp       => dataptr(s_prim(n),i)
           Tcoeffp  => dataptr(Tcoeff(n),i)
           hcoeffp  => dataptr(hcoeff(n),i)
           Xkcoeffp => dataptr(Xkcoeff(n),i)
@@ -275,16 +298,21 @@ contains
                                          pcoeffp(:,:,:,1),ng_p)
           end select
        end do
-    enddo
+    end do
 
     call destroy(bpt)
+
+    do n=1,nlevs
+        call destroy(s_prim(n))
+        call destroy(u_prim(n))
+    end do
 
   end subroutine make_thermal_coeffs
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! create Tcoeff = -kth, 
-!        hcoeff = -kth/cp, 
-!       Xkcoeff = xik*kth/cp, 
+! create Tcoeff = -kth,
+!        hcoeff = -kth/cp,
+!       Xkcoeff = xik*kth/cp,
 !        pcoeff = hp*kth/cp
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine make_thermal_coeffs_1d(lo,hi,s,ng_s,Tcoeff,ng_T,hcoeff,ng_h, &
@@ -303,9 +331,9 @@ contains
     real(kind=dp_t), intent(inout) ::  hcoeff(lo(1)-ng_h:)
     real(kind=dp_t), intent(inout) :: Xkcoeff(lo(1)-ng_X:,:)
     real(kind=dp_t), intent(inout) ::  pcoeff(lo(1)-ng_p:)
-    
+
     ! local
-    integer :: i,comp    
+    integer :: i,comp
     type (eos_t) :: eos_state
     real (kind=dp_t) :: conductivity
 
@@ -322,21 +350,21 @@ contains
           Xkcoeff(i,:) = ZERO
 
        else
-          
+
           eos_state%rho   = s(i,rho_comp)
           eos_state%T     = s(i,temp_comp)
           eos_state%xn(:) = s(i,spec_comp:spec_comp+nspec-1)/eos_state%rho
-          
+
           ! dens, temp, and xmass are inputs
           call conducteos(eos_input_rt, eos_state, .false., conductivity)
-          
+
           Tcoeff(i) = -conductivity
           hcoeff(i) = -conductivity/eos_state%cp
           pcoeff(i) = (conductivity/eos_state%cp)* &
                ((1.0d0/eos_state%rho)* &
                (1.0d0-eos_state%p/(eos_state%rho*eos_state%dpdr))+ &
                eos_state%dedr/eos_state%dpdr)
-       
+
           do comp=1,nspec
              Xkcoeff(i,comp) = (conductivity/eos_state%cp)*eos_state%dhdX(comp)
           enddo
@@ -344,14 +372,14 @@ contains
        endif
 
     enddo
-    
+
   end subroutine make_thermal_coeffs_1d
-  
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! create Tcoeff = -kth, 
-!        hcoeff = -kth/cp, 
-!       Xkcoeff = xik*kth/cp, 
+! create Tcoeff = -kth,
+!        hcoeff = -kth/cp,
+!       Xkcoeff = xik*kth/cp,
 !        pcoeff = hp*kth/cp
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine make_thermal_coeffs_2d(lo,hi,s,ng_s,Tcoeff,ng_T,hcoeff,ng_h, &
@@ -370,12 +398,12 @@ contains
     real(kind=dp_t), intent(inout) ::  hcoeff(lo(1)-ng_h:,lo(2)-ng_h:)
     real(kind=dp_t), intent(inout) :: Xkcoeff(lo(1)-ng_X:,lo(2)-ng_X:,:)
     real(kind=dp_t), intent(inout) ::  pcoeff(lo(1)-ng_p:,lo(2)-ng_p:)
-    
+
     ! local
-    integer :: i,j,comp    
+    integer :: i,j,comp
     type (eos_t) :: eos_state
     real (kind=dp_t) :: conductivity
-    
+
     do j=lo(2)-1,hi(2)+1
        do i=lo(1)-1,hi(1)+1
 
@@ -389,21 +417,21 @@ contains
              Xkcoeff(i,j,:) = ZERO
 
           else
-          
+
              eos_state%rho   = s(i,j,rho_comp)
              eos_state%T     = s(i,j,temp_comp)
              eos_state%xn(:) = s(i,j,spec_comp:spec_comp+nspec-1)/eos_state%rho
-             
+
              ! dens, temp, and xmass are inputs
              call conducteos(eos_input_rt, eos_state, .false., conductivity)
-             
+
              Tcoeff(i,j) = -conductivity
              hcoeff(i,j) = -conductivity/eos_state%cp
              pcoeff(i,j) = (conductivity/eos_state%cp)* &
                   ((1.0d0/eos_state%rho)* &
                   (1.0d0-eos_state%p/(eos_state%rho*eos_state%dpdr))+ &
                   eos_state%dedr/eos_state%dpdr)
-             
+
              do comp=1,nspec
                 Xkcoeff(i,j,comp) = (conductivity/eos_state%cp)*eos_state%dhdX(comp)
              enddo
@@ -411,14 +439,14 @@ contains
           endif
        enddo
     enddo
-    
+
   end subroutine make_thermal_coeffs_2d
-  
-  
+
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! create Tcoeff = -kth, 
-!        hcoeff = -kth/cp, 
-!       Xkcoeff = xik*kth/cp, 
+! create Tcoeff = -kth,
+!        hcoeff = -kth/cp,
+!       Xkcoeff = xik*kth/cp,
 !        pcoeff = hp*kth/cp
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine make_thermal_coeffs_3d(lo,hi,s,ng_s,Tcoeff,ng_T,hcoeff,ng_h, &
@@ -431,7 +459,7 @@ contains
     use network, only: nspec
     use fill_3d_module
     use probin_module, only: buoyancy_cutoff_factor, base_cutoff_density, limit_conductivity
-    
+
     integer        , intent(in   ) :: lo(:),hi(:),ng_s,ng_T,ng_h,ng_X,ng_p
     real(kind=dp_t), intent(in   ) ::       s(lo(1)-ng_s:,lo(2)-ng_s:,lo(3)-ng_s:,:)
     real(kind=dp_t), intent(inout) ::  Tcoeff(lo(1)-ng_T:,lo(2)-ng_T:,lo(3)-ng_T:)
@@ -443,7 +471,7 @@ contains
     integer :: i,j,k,comp
     type (eos_t) :: eos_state
     real (kind=dp_t) :: conductivity
-    
+
     !$OMP PARALLEL DO PRIVATE(i,j,k,comp,eos_state,conductivity)
     do k=lo(3)-1,hi(3)+1
        do j=lo(2)-1,hi(2)+1
@@ -460,21 +488,21 @@ contains
                 Xkcoeff(i,j,k,:) = ZERO
 
              else
-             
+
                 eos_state%rho   = s(i,j,k,rho_comp)
                 eos_state%T     = s(i,j,k,temp_comp)
                 eos_state%xn(:) = s(i,j,k,spec_comp:spec_comp+nspec-1)/eos_state%rho
-             
+
                 ! dens, temp, and xmass are inputs
                 call conducteos(eos_input_rt, eos_state, .false., conductivity)
-                
+
                 Tcoeff(i,j,k) = -conductivity
                 hcoeff(i,j,k) = -conductivity/eos_state%cp
                 pcoeff(i,j,k) = (conductivity/eos_state%cp)* &
                      ((1.0d0/eos_state%rho)* &
                      (1.0d0-eos_state%p/(eos_state%rho*eos_state%dpdr))+ &
                      eos_state%dedr/eos_state%dpdr)
-                
+
                 do comp=1,nspec
                    Xkcoeff(i,j,k,comp) = (conductivity/eos_state%cp)*eos_state%dhdX(comp)
                 enddo
@@ -485,7 +513,7 @@ contains
        enddo
     enddo
     !$OMP END PARALLEL DO
-    
+
   end subroutine make_thermal_coeffs_3d
 
 end module make_explicit_thermal_module

@@ -145,7 +145,8 @@ contains
           call multifab_build(pcoeff(n),  mla%la(n), 1,     1)
        end do
 
-       call make_thermal_coeffs(sold,Tcoeff,hcoeff,Xkcoeff,pcoeff)
+       call make_thermal_coeffs(sold,uold,Tcoeff,hcoeff,Xkcoeff,pcoeff, &
+            mla,alpha,beta,gam,the_bc_tower%bc_tower_array)
 
        call make_explicit_thermal(mla,dx,thermal,sold,Tcoeff,hcoeff,Xkcoeff,pcoeff, &
                                   p0_old,the_bc_tower)

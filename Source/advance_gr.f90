@@ -559,7 +559,8 @@ contains
           call multifab_build(pcoeff1(n),  mla%la(n), 1,     1)
        end do
 
-       call make_thermal_coeffs(s1,Tcoeff1,hcoeff1,Xkcoeff1,pcoeff1)
+       call make_thermal_coeffs(s1,uold,Tcoeff1,hcoeff1,Xkcoeff1,pcoeff1, &
+            mla,alpha,beta,gam,the_bc_tower%bc_tower_array)
 
        call make_explicit_thermal(mla,dx,thermal1,s1,Tcoeff1,hcoeff1,Xkcoeff1,pcoeff1, &
                                   p0_old,the_bc_tower)
@@ -890,7 +891,8 @@ contains
           call multifab_build(pcoeff2(n),  mla%la(n), 1,     1)
        end do
 
-       call make_thermal_coeffs(snew,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2)
+       call make_thermal_coeffs(snew,uold,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2,&
+        mla,alpha,beta,gam,the_bc_tower%bc_tower_array)
 
        call make_explicit_thermal(mla,dx,thermal2,snew,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2, &
                                   p0_new,the_bc_tower)
@@ -1329,7 +1331,8 @@ contains
           call multifab_build(pcoeff2(n),  mla%la(n), 1,     1)
        end do
 
-       call make_thermal_coeffs(s2star,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2)
+       call make_thermal_coeffs(s2star,uold,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2, &
+            mla,alpha,beta,gam,the_bc_tower%bc_tower_array)
 
        do n=1,nlevs
           call destroy(s2star(n))
@@ -1494,7 +1497,8 @@ contains
           call multifab_build(pcoeff2(n),  mla%la(n), 1,     1)
        end do
 
-       call make_thermal_coeffs(snew,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2)
+       call make_thermal_coeffs(snew,uold,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2, &
+            mla,alpha,beta,gam,the_bc_tower%bc_tower_array)
 
        call make_explicit_thermal(mla,dx,thermal2,snew,Tcoeff2,hcoeff2,Xkcoeff2,pcoeff2, &
                                   p0_new,the_bc_tower)
