@@ -1357,22 +1357,21 @@ contains
 
     misc_time_start = parallel_wtime()
 
-    do n = 1, nlevs
-        do i = 1, nfabs(s2(n))
-            sp => dataptr(s2(n), i)
-        enddo
-    enddo
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(s2(n))
+    !        sp => dataptr(s2(n), i)
+    !    enddo
+    !enddo
 
-    print *, 'sp', sp(5,5,:,rho_comp)
+    !print *, 'sp', sp(5,5,:,rho_comp)
 
-    do n = 1, nlevs
-        do i = 1, nfabs(u0(n))
-            sp => dataptr(u0(n), i)
-        enddo
-    enddo
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(u0(n))
+    !        sp => dataptr(u0(n), i)
+    !    enddo
+    !enddo
 
-    print *, 'sp', sp(5,5,:,1)
-
+    !print *, 'sp', sp(5,5,:,1)
 
     ! pass temperature through for seeding the temperature update eos call
     ! pi just goes along for the ride too
@@ -1384,13 +1383,13 @@ contains
     end do
     call cons_to_prim(s2, uold, alpha, beta, gam, s_prim, u_prim, mla,the_bc_tower%bc_tower_array)
 
-    do n = 1, nlevs
-        do i = 1, nfabs(s_prim(n))
-            sp => dataptr(s_prim(n), i)
-        enddo
-    enddo
+    !do n = 1, nlevs
+    !    do i = 1, nfabs(s_prim(n))
+    !        sp => dataptr(s_prim(n), i)
+    !    enddo
+    !enddo
 
-    print *, 'sp', sp(5,5,:,rho_comp)
+    !print *, 'sp', sp(5,5,:,rho_comp)
 
     ! now update temperature
     if (use_tfromp) then

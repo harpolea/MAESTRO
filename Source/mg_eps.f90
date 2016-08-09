@@ -29,9 +29,8 @@ module mg_eps_module
 
 
   ! tolerances for the HG projection
-  ! CHANGED: increased both of these by factor of 1.d2
-  real (kind=dp_t) :: eps_hg = 1.d-10
-  real (kind=dp_t) :: eps_hg_max = 1.d-8
+  real (kind=dp_t) :: eps_hg = 1.d-12
+  real (kind=dp_t) :: eps_hg_max = 1.d-10
 
   real (kind=dp_t) :: hg_level_factor = 10.d0
 

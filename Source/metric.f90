@@ -25,7 +25,122 @@ module metric_module
               cons_to_prim_a, prim_to_cons_a, cons_to_prim_edge, &
               prim_to_cons_edge
 
+    type metric_t
+        ! collect together metric stuff into a datatype
+        type(multifab), allocatable  :: alpha(:)
+        type(multifab), allocatable  :: beta(:)
+        type(multifab), allocatable  :: gam(:)
+        type(ml_layout) :: mla
+        real(kind=dp_t), allocatable :: dx(:,:)
+        type(bc_level), allocatable  :: the_bc_level(:)
+        real(kind=dp_t), allocatable :: chrls(:,:,:,:,:,:,:)
+
+    end type metric_t
+
 contains
+
+    subroutine make_weak_field_t(metric, ng, mla,dx,the_bc_level)
+        ! NOTE: gam is a vector as will assume it is a diagonal matrix
+        ! Returns alpha, beta and gamma of weak field metric
+        ! FIXME: I have no idea how to implement this in a useful way.
+
+        use probin_module, only : g, Rr, c, prob_lo
+
+        type(metric_t) , intent(inout) :: metric
+        type(ml_layout), intent(in) :: mla
+        real(kind=dp_t), intent(in   ) :: dx(:,:)
+        type(bc_level)    , intent(in   ) :: the_bc_level(:)
+        integer, intent(in) :: ng
+
+        real(kind=dp_t), pointer :: alphap(:,:,:,:)
+        real(kind=dp_t), pointer :: betap(:,:,:,:)
+        real(kind=dp_t), pointer :: gamp(:,:,:,:)
+
+        real(kind=dp_t) :: rad
+        integer :: n, i, j, dm, nlevs
+        integer :: lo(mla%dim), hi(mla%dim)
+
+        nlevs = mla%nlevel
+        dm = mla%dim
+
+        allocate(metric%alpha(nlevs), metric%beta(nlevs), metric%gam(nlevs))
+        allocate(metric%dx(nlevs,dm), metric%the_bc_level(nlevs))
+
+        do n = 1, nlevs
+            call multifab_build(metric%alpha(n), mla%la(n),     1, ng)
+            call multifab_build(metric%beta(n), mla%la(n),    dm, ng)
+            call multifab_build(metric%gam(n), mla%la(n),    dm, ng)
+
+            call setval(        metric%alpha(n), ZERO, all=.true.)
+            call setval(         metric%beta(n), ZERO, all=.true.)
+            call setval(          metric%gam(n), ZERO, all=.true.)
+        end do
+
+        metric%mla = mla
+        metric%dx = dx
+        metric%the_bc_level = the_bc_level
+
+        do n = 1, nlevs
+            do j = 1, nfabs(metric%alpha(n))
+
+                alphap => dataptr(metric%alpha(n),j)
+                betap => dataptr(metric%beta(n),j)
+                gamp => dataptr(metric%gam(n),j)
+                lo = lwb(get_box(metric%alpha(n), j))
+                hi = upb(get_box(metric%alpha(n), j))
+
+                betap = 0.d0
+
+                do i = lo(3), hi(3)
+                    rad = prob_lo(3) + (dble(i) + HALF) * dx(n,3)
+                    !rad = (dble(i) + HALF) * dx(n,3)
+                    !print *, 'radial coord: ', rad
+                    !print *,  2.d0 * (1.d0 - rad / Rr) * g / c**2
+                    alphap(:,:,i,1) = c * sqrt(1.d0 - 2.d0 * (1.d0 - rad / Rr) * g / c**2)
+                    gamp(:,:,i,:) = 1.d0 + 2.d0 * (1.d0 - rad / Rr) * g / c**2
+                enddo
+
+            enddo
+        enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,metric%alpha,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=metric%alpha(1)%ng)
+        call ml_restrict_and_fill(nlevs,metric%beta,mla%mba%rr,the_bc_level, &
+                                icomp=1, &
+                                bcomp=1, &
+                                nc=dm, &
+                                ng=metric%beta(1)%ng)
+        call ml_restrict_and_fill(nlevs,metric%gam,mla%mba%rr,the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=dm, &
+                                  ng=metric%gam(1)%ng)
+
+        call christoffels_t(metric)
+
+    end subroutine make_weak_field_t
+
+    subroutine destroy_metric(metric)
+        type(metric_t), intent(inout) :: metric
+
+        integer :: i, nlevs
+
+        nlevs = metric%mla%nlevel
+
+        do i=1,nlevs
+            call destroy(metric%alpha(i))
+            call destroy(metric%beta(i))
+            call destroy(metric%gam(i))
+        end do
+
+        deallocate(metric%alpha, metric%beta, metric%gam)
+        deallocate(metric%dx, metric%chrls, metric%the_bc_level)
+
+    end subroutine destroy_metric
 
     subroutine make_weak_field(alpha, beta, gam, mla,dx,the_bc_level)
         ! NOTE: gam is a vector as will assume it is a diagonal matrix
@@ -192,6 +307,68 @@ contains
 
     end subroutine calcW
 
+    subroutine calcW_t(metric, u, W_lor)
+        ! Calculates the Lorentz factor
+        use probin_module, only : c
+
+        type(metric_t)    , intent(in)    :: metric
+        type(multifab)    , intent(in)    :: u(:)
+        type(multifab)    , intent(inout)    :: W_lor(:)
+
+        real(kind=dp_t), pointer:: alphap(:,:,:,:)
+        real(kind=dp_t), pointer:: betap(:,:,:,:)
+        real(kind=dp_t), pointer:: gamp(:,:,:,:)
+        real(kind=dp_t), pointer:: up(:,:,:,:)
+        real(kind=dp_t), pointer:: Wp(:,:,:,:)
+        integer     :: dm, nlevs, n, i, j, k, lo(metric%mla%dim), hi(metric%mla%dim)
+        real(kind=dp_t)     :: eye(1:3,1:3)
+
+        ! make identity matrix
+        eye(:,:) = 0.d0
+        do i = 1,3
+            eye(i,i) = 1.d0
+        enddo
+
+        nlevs = metric%mla%nlevel
+        dm = metric%mla%dim
+
+        do n = 1, nlevs
+            do k = 1, nfabs(metric%alpha(n))
+                alphap => dataptr(metric%alpha(n),k)
+                betap => dataptr(metric%beta(n),k)
+                gamp => dataptr(metric%gam(n),k)
+                up => dataptr(u(n),k)
+                Wp => dataptr(W_lor(n),k)
+                lo = lwb(get_box(metric%alpha(n), k))
+                hi = upb(get_box(metric%alpha(n), k))
+
+                Wp(:,:,:,1) = ZERO
+
+                do i = 1, 3
+                    do j = 1, 3
+                        Wp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) = Wp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) + &
+                        eye(i,j) * &
+                        gamp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) * &
+                        (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i)) * &
+                        (up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j)) / &
+                        alphap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)**2
+                    enddo
+                enddo
+                Wp(:,:,:,1) = ONE / sqrt(1.d0 - Wp(:,:,:,1)/c**2)
+            enddo
+        enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,W_lor,metric%mla%mba%rr,metric%the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=W_lor(1)%ng)
+
+    end subroutine calcW_t
+
     subroutine calcW_mac(alpha, beta, gam, u, mla, W_lor,the_bc_level)
         ! Calculates the Lorentz factor
         use probin_module, only : c
@@ -274,6 +451,83 @@ contains
 
     end subroutine calcW_mac
 
+    subroutine calcW_mac_t(metric, u, W_lor)
+        ! Calculates the Lorentz factor
+        use probin_module, only : c
+
+        type(metric_t)    , intent(in)    :: metric
+        type(multifab)    , intent(in)    :: u(:,:)
+        type(multifab)    , intent(inout)    :: W_lor(:)
+
+        real(kind=dp_t), pointer:: alphap(:,:,:,:)
+        real(kind=dp_t), pointer:: betap(:,:,:,:)
+        real(kind=dp_t), pointer:: gamp(:,:,:,:)
+        real(kind=dp_t), pointer:: up(:,:,:,:)
+        real(kind=dp_t), pointer:: vp(:,:,:,:)
+        real(kind=dp_t), pointer:: wp(:,:,:,:)
+        real(kind=dp_t), pointer:: W_lorp(:,:,:,:)
+        integer     :: dm, nlevs, n, i, j, k, lo(metric%mla%dim), hi(metric%mla%dim)
+        real(kind=dp_t)     :: eye(1:3,1:3)
+        real(kind=dp_t), allocatable   :: v(:,:,:,:)
+
+        ! make identity matrix
+        eye(:,:) = 0.d0
+        do i = 1,3
+            eye(i,i) = 1.d0
+        enddo
+
+        nlevs = metric%mla%nlevel
+        dm = metric%mla%dim
+
+        do n = 1, nlevs
+            do k = 1, nfabs(metric%alpha(n))
+                alphap => dataptr(metric%alpha(n),k)
+                betap => dataptr(metric%beta(n),k)
+                gamp => dataptr(metric%gam(n),k)
+                up => dataptr(u(n,1),k)
+                vp => dataptr(u(n,2),k)
+                wp => dataptr(u(n,3),k)
+                W_lorp => dataptr(W_lor(n),k)
+                lo = lwb(get_box(metric%alpha(n), k))
+                hi = upb(get_box(metric%alpha(n), k))
+
+                allocate(v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1:3))
+
+                W_lorp(:,:,:,1) = ZERO
+
+                v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) = up(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)
+
+                v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),2) = vp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)
+
+                v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),3) = wp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)
+
+                do i = 1, 3
+                    do j = 1, 3
+                        W_lorp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) = W_lorp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1) + &
+                        eye(i,j) * &
+                        gamp(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) * &
+                        (v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),i)) * &
+                        (v(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j) + &
+                        betap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),j)) / &
+                        alphap(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),1)**2
+                    enddo
+                enddo
+                W_lorp(:,:,:,1) = ONE / sqrt(1.d0 - W_lorp(:,:,:,1)/c**2)
+
+                deallocate(v)
+            enddo
+        enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,W_lor,metric%mla%mba%rr,metric%the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=W_lor(1)%ng)
+
+    end subroutine calcW_mac_t
+
     subroutine calcu0(alpha, beta, gam, W_lor, u0, mla,the_bc_level)
         ! Calculates timelike coordinate of 3+1 velocity
         ! using Lorentz factor and alpha:
@@ -317,6 +571,46 @@ contains
                                   ng=u0(1)%ng)
 
     end subroutine calcu0
+
+    subroutine calcu0_t(metric, W_lor, u0)
+        ! Calculates timelike coordinate of 3+1 velocity
+        ! using Lorentz factor and alpha:
+        ! W = alpha * u0
+
+        type(metric_t)    , intent(in)    :: metric
+        type(multifab)    , intent(in)    :: W_lor(:)
+        type(multifab)   , intent(inout) :: u0(:)
+
+        real(kind=dp_t), pointer :: alphap(:,:,:,:)
+        real(kind=dp_t), pointer :: betap(:,:,:,:)
+        real(kind=dp_t), pointer :: gamp(:,:,:,:)
+        real(kind=dp_t), pointer :: Wp(:,:,:,:)
+        real(kind=dp_t), pointer :: u0p(:,:,:,:)
+        integer     :: nlevs, n, i, dm
+
+        nlevs = metric%mla%nlevel
+        dm = metric%mla%dim
+
+        do n = 1, nlevs
+            do i = 1, nfabs(metric%alpha(n))
+                alphap => dataptr(metric%alpha(n),i)
+                betap => dataptr(metric%beta(n),i)
+                gamp => dataptr(metric%gam(n),i)
+                u0p => dataptr(u0(n),i)
+                Wp => dataptr(W_lor(n),i)
+
+                u0p(:,:,:,1) = Wp(:,:,:,1) / alphap(:,:,:,1)
+            enddo
+        enddo
+
+        ! fill ghosts
+        call ml_restrict_and_fill(nlevs,u0,metric%mla%mba%rr,metric%the_bc_level, &
+                                  icomp=1, &
+                                  bcomp=1, &
+                                  nc=1, &
+                                  ng=u0(1)%ng)
+
+    end subroutine calcu0_t
 
     subroutine calcu0_1d(alpha, beta, gam, w0, u0_1d, mla,the_bc_level, dx)
         ! Calculates timelike coordinate of 3+1 velocity
@@ -365,6 +659,49 @@ contains
         u0_1d(:,:) = W_lor(:,:) / alpha_1d(:,:)
 
     end subroutine calcu0_1d
+
+    subroutine calcu0_1d_t(metric, w0, u0_1d)
+        ! Calculates timelike coordinate of 3+1 velocity
+        ! using Lorentz factor and alpha:
+        ! W = alpha * u0
+        use geometry   , only : nlevs_radial, nr_fine
+        use probin_module, only : c
+        use average_module   , only : average
+
+        type(metric_t)    , intent(in)    :: metric
+        real(dp_t)        ,  intent(in)   :: w0(:,0:)
+        real(dp_t)        ,  intent(inout):: u0_1d(:,0:)
+
+        real(kind=dp_t), allocatable :: W_lor(:,:)
+        real(kind=dp_t), allocatable :: alpha_1d(:,:)
+        real(kind=dp_t), allocatable :: beta_1d(:,:,:)
+        real(kind=dp_t), allocatable :: gam_1d(:,:,:)
+        integer     :: i, dm
+
+        dm = metric%mla%dim
+
+        allocate(              W_lor(nlevs_radial,0:nr_fine-1))
+        allocate(              alpha_1d(nlevs_radial,0:nr_fine-1))
+        allocate(              beta_1d(nlevs_radial,0:nr_fine-1,dm))
+        allocate(              gam_1d(nlevs_radial,0:nr_fine-1,dm))
+
+        call average(metric%mla, metric%alpha, alpha_1d, metric%dx, 1)
+
+        !print *, 'alpha_1d', alpha_1d
+
+        do i = 1, dm
+            call average(metric%mla, metric%beta, beta_1d(:,:,i), metric%dx, i)
+            call average(metric%mla, metric%gam, gam_1d(:,:,i), metric%dx, i)
+        enddo
+
+        W_lor(:,:) = gam_1d(:,:,3) * (w0(:,:nr_fine-1) + beta_1d(:,:,3))**2 / &
+                     alpha_1d(:,:)**2
+
+        W_lor(:,:) = ONE / sqrt(ONE - W_lor(:,:)/c**2)
+
+        u0_1d(:,:) = W_lor(:,:) / alpha_1d(:,:)
+
+    end subroutine calcu0_1d_t
 
     subroutine g(alpha, beta, gam, x, met)
         ! Returns metric components at coordinate x
@@ -476,6 +813,78 @@ contains
 
     end subroutine christoffels
 
+    subroutine christoffels_t(metric)
+        ! Calculates christoffel symbols given metric functions.
+        ! These are metric dependent, so have only implemented cartesian
+        ! weak field here.
+        ! TODO: Need instead to provide these in initial data, or at least
+        ! have the initial data provide an analytic form of the derivatives
+        ! of alpha and beta, K and 3-metric christoffels.
+        use probin_module, only : g, Rr, c, max_levs
+        use geometry, only: nr_fine
+
+        type(metric_t)    , intent(inout)    :: metric
+
+        !real(kind=dp_t)   , intent(inout) :: chrls(:,0:,0:,0:,0:,0:,0:)
+
+        real(kind=dp_t), pointer:: alphap(:,:,:,:)
+        real(kind=dp_t), pointer:: betap(:,:,:,:)
+        real(kind=dp_t), pointer:: gamp(:,:,:,:)
+        integer     :: nlevs, n, m, i, j, k, lo(metric%mla%dim), hi(metric%mla%dim), dm
+
+        nlevs = metric%mla%nlevel
+        dm = metric%mla%dim
+
+        allocate(metric%chrls(max_levs,0:dm,0:dm,0:dm, &
+        0:extent(metric%mla%mba%pd(max_levs),1),0:extent(metric%mla%mba%pd(max_levs),2),0:nr_fine-1))
+
+        metric%chrls(:,:,:,:,:,:,:) = ZERO
+
+        do n = 1, nlevs
+            do m = 1, nfabs(metric%alpha(n))
+                alphap => dataptr(metric%alpha(n),m)
+                betap => dataptr(metric%beta(n),m)
+                gamp => dataptr(metric%gam(n),m)
+                lo =  lwb(get_box(metric%alpha(n), m))
+                hi =  upb(get_box(metric%alpha(n), m))
+
+                do k = lo(3), hi(3)
+                    do j = lo(2), hi(2)
+                        do i = lo(1), hi(1)
+                            ! t_tr
+                            metric%chrls(n,0,0,3,i,j,k) = g / (Rr * alphap(i,j,k,1)**2)
+                            ! r_tt
+                            metric%chrls(n,3,0,0,i,j,k) = g * alphap(i,j,k,1)**2 / (c**2 * Rr)
+                        enddo
+                    enddo
+                enddo
+
+                ! cartesian weak field
+                ! t_rt
+                metric%chrls(n,0,3,0,:,:,:) = metric%chrls(n,0,0,3,:,:,:)
+                ! r_xx
+                metric%chrls(n,3,1,1,:,:,:) = metric%chrls(n,0,0,3,:,:,:)
+                ! r_yy
+                metric%chrls(n,3,2,2,:,:,:) = metric%chrls(n,0,0,3,:,:,:)
+                !r_rr
+                metric%chrls(n,3,3,3,:,:,:) = -metric%chrls(n,0,0,3,:,:,:)
+                ! r_xr
+                metric%chrls(n,3,1,3,:,:,:) = -metric%chrls(n,0,0,3,:,:,:)
+                ! r_rx
+                metric%chrls(n,3,3,1,:,:,:) = metric%chrls(n,3,1,3,:,:,:)
+                ! x_rx
+                metric%chrls(n,1,3,1,:,:,:) = -metric%chrls(n,0,0,3,:,:,:)
+                ! x_xr
+                metric%chrls(n,1,1,3,:,:,:) = metric%chrls(n,1,3,1,:,:,:)
+                ! y_yr
+                metric%chrls(n,2,2,3,:,:,:) = -metric%chrls(n,0,0,3,:,:,:)
+                ! y_ry
+                metric%chrls(n,2,3,2,:,:,:) = metric%chrls(n,2,2,3,:,:,:)
+            enddo
+        enddo
+
+    end subroutine christoffels_t
+
     subroutine cons_to_prim(s, u, alpha, beta, gam, s_prim, u_prim, mla,the_bc_level)
         use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
         ! FIXME: need to import thermal gamma
@@ -578,6 +987,105 @@ contains
         !print *, 'sprim', s_primp(:,:,:,1)
 
     end subroutine cons_to_prim
+
+    subroutine cons_to_prim_t(s, u, metric, s_prim, u_prim)
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
+        ! FIXME: need to import thermal gamma
+        use probin_module, only : gamm_therm
+
+        type(multifab), intent(in) :: s(:)
+        type(multifab), intent(in) :: u(:)
+        type(metric_t), intent(in) :: metric
+        type(multifab), intent(inout) :: s_prim(:)
+        type(multifab), intent(inout) :: u_prim(:)
+
+        real(kind=dp_t), pointer ::  sp(:,:,:,:)
+        real(kind=dp_t), pointer ::  up(:,:,:,:)
+        real(kind=dp_t), pointer ::  alphap(:,:,:,:)
+        real(kind=dp_t), pointer ::  betap(:,:,:,:)
+        real(kind=dp_t), pointer ::  gamp(:,:,:,:)
+        real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
+        real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
+
+        real(kind=dp_t) :: pmin, pmax, pbar, u0
+
+        integer :: i,j,k,l,m,n,nlevs,lo(metric%mla%dim),hi(metric%mla%dim),dm
+        logical :: fail
+
+        nlevs = metric%mla%nlevel
+        dm = metric%mla%dim
+
+        do n=1,nlevs
+           do m=1,nfabs(s(n))
+
+               sp => dataptr(s(n), m)
+               up => dataptr(u(n), m)
+               alphap => dataptr(metric%alpha(n), m)
+               betap => dataptr(metric%beta(n), m)
+               gamp => dataptr(metric%gam(n), m)
+               s_primp => dataptr(s_prim(n), m)
+               u_primp => dataptr(u_prim(n), m)
+               lo =  lwb(get_box(s(n), m))
+               hi =  upb(get_box(s(n), m))
+
+               !print *, 's', sp(:,:,:,rhoh_comp)
+
+               do k = lo(3), hi(3)
+                   do j = lo(2), hi(2)
+                       do i = lo(1), hi(1)
+
+                           s_primp(i,j,k,:) = sp(i,j,k,:)
+                           !pmin = (Dh - D) * (gamma - 1.) / gamma
+                           !pmax = (gamma - 1.) * Dh
+                           pmin = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / gamm_therm
+                           if (pmin < 0.d0) then
+                               pmin = 0.d0
+                           endif
+                           pmax = (gamm_therm - 1.d0) * sp(i,j,k,rhoh_comp)
+                           pbar = 0.5d0 * (pmin + pmax)
+
+                           !print *, 'pmax', pmax
+
+                           call Newton_Raphson(pmin, pmax, pbar, root_find_on_me, &
+                           sp(i,j,k,rho_comp), up(i,j,k,:), &
+                           sp(i,j,k,rhoh_comp), alphap(i,j,k,1), &
+                           betap(i,j,k,:), gamp(i,j,k,:), fail)
+
+                           u0 = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / (gamm_therm * pbar)
+
+                           !print *, 'pmax', pmax
+
+                           s_primp(i,j,k,rho_comp) = sp(i,j,k,rho_comp) / u0
+                           s_primp(i,j,k,rhoh_comp) = sp(i,j,k,rhoh_comp) / u0
+                           do l = 0, nspec-1
+                               s_primp(i,j,k,spec_comp+l) = sp(i,j,k,spec_comp+l) / u0
+                           enddo
+                           u_primp(i,j,k,:) = up(i,j,k,:) * u0
+                       enddo
+                   enddo
+               enddo
+           enddo
+       enddo
+
+       !print *, 'sprim', s_primp(:,:,:,1)
+       !print *, 'gamm_therm', gamm_therm
+
+       ! fill ghosts
+       call ml_restrict_and_fill(nlevs,s_prim,metric%mla%mba%rr,metric%the_bc_level, &
+                                 icomp=rho_comp, &
+                                 bcomp=dm+rho_comp, &
+                                 nc=nscal, &
+                                 ng=s_prim(1)%ng)
+
+       call ml_restrict_and_fill(nlevs,u_prim,metric%mla%mba%rr,metric%the_bc_level, &
+                                 icomp=1, &
+                                 bcomp=1, &
+                                 nc=dm, &
+                                 ng=u_prim(1)%ng)
+
+        !print *, 'sprim', s_primp(:,:,:,1)
+
+    end subroutine cons_to_prim_t
 
     subroutine cons_to_prim_edge(sedge, umac, u, alpha, beta, gam, s_prim_edge, u_prim_edge, mla,the_bc_level)
         use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
@@ -700,6 +1208,124 @@ contains
         enddo
 
     end subroutine cons_to_prim_edge
+
+    subroutine cons_to_prim_edge_t(sedge, umac, u, metric, s_prim_edge, u_prim_edge)
+        use variables, only: rho_comp, rhoh_comp, spec_comp, nspec, nscal
+        ! FIXME: need to import thermal gamma
+        use probin_module, only : gamm_therm
+
+        type(multifab), intent(in) :: sedge(:,:)
+        type(multifab), intent(in) :: umac(:,:)
+        type(multifab), intent(in) :: u(:)
+        type(metric_t), intent(in) :: metric
+        type(multifab), intent(inout) :: s_prim_edge(:,:)
+        type(multifab), intent(inout) :: u_prim_edge(:,:)
+
+        real(kind=dp_t), pointer ::  sp(:,:,:,:)
+        real(kind=dp_t), pointer ::  umacp(:,:,:,:)
+        real(kind=dp_t), pointer ::  up(:,:,:,:)
+        real(kind=dp_t), pointer ::  alphap(:,:,:,:)
+        real(kind=dp_t), pointer ::  betap(:,:,:,:)
+        real(kind=dp_t), pointer ::  gamp(:,:,:,:)
+        real(kind=dp_t), pointer ::  s_primp(:,:,:,:)
+        real(kind=dp_t), pointer ::  u_primp(:,:,:,:)
+
+        real(kind=dp_t) :: pmin, pmax, pbar, u0
+        real(kind=dp_t), allocatable :: uedge(:,:,:,:)
+
+        integer :: i,j,k,l,m,n,nlevs,lo(metric%mla%dim),hi(metric%mla%dim),dm,comp
+        logical :: fail
+
+        nlevs = metric%mla%nlevel
+        dm = metric%mla%dim
+
+        do n=1,nlevs
+           do comp=1,dm
+               do m=1,nfabs(sedge(n,comp))
+                   sp => dataptr(sedge(n,comp), m)
+                   umacp => dataptr(umac(n,comp), m)
+                   up => dataptr(u(n), m)
+                   alphap => dataptr(metric%alpha(n), m)
+                   betap => dataptr(metric%beta(n), m)
+                   gamp => dataptr(metric%gam(n), m)
+                   s_primp => dataptr(s_prim_edge(n,comp), m)
+                   u_primp => dataptr(u_prim_edge(n,comp), m)
+                   lo =  lwb(get_box(sedge(n,comp), m))
+                   hi =  upb(get_box(sedge(n,comp), m))
+
+                   allocate(uedge(lo(1):hi(1), lo(2):hi(2), lo(3):hi(3), 1:dm))
+
+                   !print *, 's', sp(:,:,:,rhoh_comp)
+
+                   do k = lo(3), hi(3)
+                       do j = lo(2), hi(2)
+                           do i = lo(1), hi(1)
+
+                               uedge(i,j,k,:) = up(i,j,k,:)
+                               uedge(i,j,k,comp) = umacp(i,j,k,1)
+
+                               s_primp(i,j,k,:) = sp(i,j,k,:)
+                               !u_primp(i,j,k,:) = up(i,j,k,:)
+                               !pmin = (Dh - D) * (gamma - 1.) / gamma
+                               !pmax = (gamma - 1.) * Dh
+                               pmin = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / gamm_therm
+                               if (pmin < 0.d0) then
+                                   pmin = 0.d0
+                               endif
+                               pmax = (gamm_therm - 1.d0) * sp(i,j,k,rhoh_comp)
+                               pbar = 0.5d0 * (pmin + pmax)
+
+                               !print *, 'pmax', pmax
+
+                               call Newton_Raphson(pmin, pmax, pbar, root_find_on_me, &
+                               sp(i,j,k,rho_comp), uedge(i,j,k,:), &
+                               sp(i,j,k,rhoh_comp), alphap(i,j,k,1), &
+                               betap(i,j,k,:), gamp(i,j,k,:), fail)
+                               !sp(i,j,k,rho_comp), umacp(i,j,k,:), &
+                               !sp(i,j,k,rhoh_comp), alphap(i,j,k,1), &
+                               !betap(i,j,k,:), gamp(i,j,k,:), fail)
+
+                               u0 = (sp(i,j,k,rhoh_comp) - sp(i,j,k,rho_comp)) * (gamm_therm - 1.d0) / (gamm_therm * pbar)
+
+                               !print *, 'pmax', pmax
+
+                               s_primp(i,j,k,rho_comp) = sp(i,j,k,rho_comp) / u0
+                               s_primp(i,j,k,rhoh_comp) = sp(i,j,k,rhoh_comp) / u0
+                               do l = 0, nspec-1
+                                   s_primp(i,j,k,spec_comp+l) = sp(i,j,k,spec_comp+l) / u0
+                               enddo
+                               u_primp(i,j,k,1) = umacp(i,j,k,1) * u0
+                           enddo
+                       enddo
+                   enddo
+
+                   deallocate(uedge)
+               enddo
+           enddo
+        enddo
+
+
+
+       !print *, 'sprim', s_primp(:,:,:,1)
+       !print *, 'gamm_therm', gamm_therm
+       do comp=1,dm
+           ! fill ghosts
+           call ml_restrict_and_fill(nlevs,s_prim_edge(:,comp),metric%mla%mba%rr,metric%the_bc_level, &
+                                     icomp=rho_comp, &
+                                     bcomp=dm+rho_comp, &
+                                     nc=nscal, &
+                                     ng=s_prim_edge(1,comp)%ng)
+
+           call ml_restrict_and_fill(nlevs,u_prim_edge(:,comp),metric%mla%mba%rr,metric%the_bc_level, &
+                                     icomp=1, &
+                                     bcomp=1, &
+                                     nc=1, &
+                                     ng=u_prim_edge(1,comp)%ng)
+
+            !print *, 'sprim', s_primp(:,:,:,1)
+        enddo
+
+    end subroutine cons_to_prim_edge_t
 
     subroutine cons_to_prim_a(s, u, alpha, beta, gam, s_prim,lo,hi,ng_s,ng_u)
         ! Works on arrays
@@ -1013,7 +1639,7 @@ contains
   end subroutine prim_to_cons_edge
 
    subroutine prim_to_cons_a(s, u0, s_prim)
-       use variables, only: rho_comp, rhoh_comp, spec_comp, nspec,nscal
+       use variables, only: rho_comp, rhoh_comp, spec_comp, nspec
 
        real(kind=dp_t), intent(inout) :: s(:,:,:,:)
        real(kind=dp_t), intent(in) :: u0(:,:,:)
